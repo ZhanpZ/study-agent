@@ -1,21 +1,34 @@
 import { useState, useRef, useEffect } from "react";
 import MessageBubble from "./MessageBubble";
 import PhaseIndicator from "./PhaseIndicator";
+import MCQPanel from "./MCQPanel";
 
-export default function Chat({ messages, phase, score, gaps, connected, onSend }) {
+export default function Chat({
+  messages, phase, score, gaps, connected, mode,
+  mcqQuestions, codeChallenge, summary,
+  onSend, onReadyToTeach, onSubmitMCQ, onSubmitCode,
+}) {
   const [input, setInput] = useState("");
+  const [codeInput, setCodeInput] = useState("");
   const messagesEndRef = useRef(null);
   const isTeachPhase = phase === "teach";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, mcqQuestions, codeChallenge]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!input.trim() || !isTeachPhase) return;
     onSend(input.trim());
     setInput("");
+  };
+
+  const handleCodeSubmit = () => {
+    if (codeInput.trim()) {
+      onSubmitCode(codeInput.trim());
+      setCodeInput("");
+    }
   };
 
   return (
@@ -56,37 +69,109 @@ export default function Chat({ messages, phase, score, gaps, connected, onSend }
         {messages.map((msg, idx) => (
           <MessageBubble key={idx} agent={msg.agent} content={msg.content} />
         ))}
+
+        {/* MCQ panel for concept mode evaluation */}
+        {phase === "quiz" && mcqQuestions && (
+          <div className="my-4">
+            <MCQPanel questions={mcqQuestions} onSubmit={onSubmitMCQ} />
+          </div>
+        )}
+
+        {/* Code challenge for code mode evaluation */}
+        {phase === "evaluate" && codeChallenge && (
+          <div className="my-4 bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
+            <h3 className="text-lg font-semibold text-white">Coding Challenge</h3>
+            <p className="text-sm text-gray-200 whitespace-pre-wrap">
+              {codeChallenge.problem}
+            </p>
+            {codeChallenge.hints.length > 0 && (
+              <div className="text-xs text-gray-400">
+                Hints: {codeChallenge.hints.join(" | ")}
+              </div>
+            )}
+            <textarea
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              rows={10}
+              placeholder="Write your code here..."
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-sm
+                         text-white font-mono placeholder-gray-500 focus:outline-none
+                         focus:border-indigo-500 resize-y"
+            />
+            <button
+              onClick={handleCodeSubmit}
+              disabled={!codeInput.trim()}
+              className="w-full py-3 bg-emerald-600 text-white font-medium rounded-lg
+                         hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed
+                         transition-colors"
+            >
+              Submit Code
+            </button>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={
-            isTeachPhase
-              ? "Explain the concept in your own words..."
-              : phase === "complete"
-              ? "Session complete!"
-              : "Waiting for agent..."
-          }
-          disabled={!isTeachPhase}
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
-                     text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500
-                     disabled:opacity-50 disabled:cursor-not-allowed"
-        />
+      {/* Ready to Teach button */}
+      {phase === "explain_done" && (
         <button
-          type="submit"
-          disabled={!isTeachPhase || !input.trim()}
-          className="px-6 py-3 bg-indigo-600 text-white text-sm font-medium rounded-lg
-                     hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors"
+          onClick={onReadyToTeach}
+          className="w-full py-3 mb-2 bg-green-600 text-white font-medium rounded-lg
+                     hover:bg-green-500 transition-colors"
         >
-          Send
+          I'm Ready to Teach
         </button>
-      </form>
+      )}
+
+      {/* Input — only shown during teach phase */}
+      {phase !== "explain_done" && phase !== "quiz" && !(phase === "evaluate" && codeChallenge) && (
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          {mode === "code" && isTeachPhase ? (
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              rows={3}
+              placeholder="Explain the code in your own words..."
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
+                         text-white font-mono placeholder-gray-500 focus:outline-none
+                         focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
+            />
+          ) : (
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                isTeachPhase
+                  ? "Explain the concept in your own words..."
+                  : phase === "complete"
+                  ? "Session complete!"
+                  : "Waiting for agent..."
+              }
+              disabled={!isTeachPhase}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
+                         text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          )}
+          <button
+            type="submit"
+            disabled={!isTeachPhase || !input.trim()}
+            className="px-6 py-3 bg-indigo-600 text-white text-sm font-medium rounded-lg
+                       hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
+                       transition-colors"
+          >
+            Send
+          </button>
+        </form>
+      )}
     </div>
   );
 }

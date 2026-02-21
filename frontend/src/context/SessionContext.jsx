@@ -10,6 +10,9 @@ export function SessionProvider({ children }) {
   const [sessionTopic, setSessionTopic] = useState(() => {
     return sessionStorage.getItem("activeSessionTopic") || "";
   });
+  const [sessionMode, setSessionMode] = useState(() => {
+    return sessionStorage.getItem("activeSessionMode") || "concept";
+  });
 
   useEffect(() => {
     if (sessionId) {
@@ -27,14 +30,24 @@ export function SessionProvider({ children }) {
     }
   }, [sessionTopic]);
 
+  useEffect(() => {
+    sessionStorage.setItem("activeSessionMode", sessionMode);
+  }, [sessionMode]);
+
   const clearSession = () => {
     setSessionId(null);
     setSessionTopic("");
+    setSessionMode("concept");
   };
 
   return (
     <SessionContext.Provider
-      value={{ sessionId, setSessionId, sessionTopic, setSessionTopic, clearSession }}
+      value={{
+        sessionId, setSessionId,
+        sessionTopic, setSessionTopic,
+        sessionMode, setSessionMode,
+        clearSession,
+      }}
     >
       {children}
     </SessionContext.Provider>

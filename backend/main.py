@@ -14,6 +14,7 @@ from backend.models.schemas import (
     ConceptMerge,
 )
 from backend.agents.orchestrator import Orchestrator, Phase
+from backend.agents.professor import generate_summary
 from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
@@ -59,20 +60,21 @@ async def start_session(body: SessionStart, db: AsyncSession = Depends(get_db)):
     skill = await get_or_create_skill(db, concept.id)
 
     # Create session record
-    session = Session(concept_id=concept.id, phase="explain")
+    session = Session(concept_id=concept.id, phase="explain", mode=body.mode)
     db.add(session)
     await db.commit()
     await db.refresh(session)
 
     # Initialize orchestrator
     orchestrator = Orchestrator()
-    state = orchestrator.start_session(body.topic, skill.score)
+    state = orchestrator.start_session(body.topic, skill.score, mode=body.mode)
     active_sessions[session.id] = (orchestrator, state)
 
     return SessionResponse(
         id=session.id,
         concept_id=concept.id,
         phase=state.phase.value,
+        mode=session.mode,
         started_at=session.started_at,
     )
 
@@ -96,11 +98,41 @@ async def get_session(session_id: int, db: AsyncSession = Depends(get_db)):
         "id": session.id,
         "concept_id": session.concept_id,
         "phase": session.phase,
+        "mode": session.mode,
         "messages": [
             {"role": m.role, "agent": m.agent, "content": m.content}
             for m in messages
         ],
     }
+
+
+@app.get("/api/session/{session_id}/summary")
+async def get_session_summary(session_id: int, db: AsyncSession = Depends(get_db)):
+    session = await db.get(Session, session_id)
+    if not session:
+        return {"error": "Session not found"}
+    return {"summary": session.summary, "mode": session.mode}
+
+
+@app.get("/api/concepts/{concept_id}/sessions")
+async def get_concept_sessions(concept_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Session)
+        .where(Session.concept_id == concept_id)
+        .order_by(Session.started_at.desc())
+    )
+    sessions = result.scalars().all()
+    return [
+        {
+            "id": s.id,
+            "phase": s.phase,
+            "mode": s.mode,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+            "has_summary": s.summary is not None,
+        }
+        for s in sessions
+    ]
 
 
 @app.get("/api/reviews/due")
@@ -178,7 +210,9 @@ async def websocket_session(websocket: WebSocket, session_id: int):
             skill = await get_or_create_skill(db, session_record.concept_id)
 
             orchestrator = Orchestrator()
-            state = orchestrator.start_session(concept.name, skill.score)
+            state = orchestrator.start_session(
+                concept.name, skill.score, mode=session_record.mode
+            )
             state.phase = Phase(session_record.phase)
 
             # Rebuild conversation history from stored messages
@@ -223,27 +257,86 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     "type": "message",
                     "agent": agent_name,
                     "content": response,
-                    "phase": state.phase.value,
+                    "phase": "explain_done",
                 })
 
-                # Transition to teach phase
-                if state.phase == Phase.TEACH:
-                    await websocket.send_json({"type": "phase_change", "phase": "teach"})
-                    prompt, agent_name, state = orchestrator.process_message(state)
-                    active_sessions[session_id] = (orchestrator, state)
-                    await websocket.send_json({
-                        "type": "message",
-                        "agent": agent_name,
-                        "content": prompt,
-                        "phase": state.phase.value,
-                    })
+                # Send explain_done — wait for user to click "Ready to Teach"
+                await websocket.send_json({
+                    "type": "phase_change",
+                    "phase": "explain_done",
+                })
 
             # Main message loop
             while True:
                 data = await websocket.receive_text()
                 msg = json.loads(data)
 
-                if msg.get("type") == "message":
+                if msg.get("type") == "ready_to_teach":
+                    # User clicked "Ready to Teach"
+                    if state.phase == Phase.TEACH:
+                        await websocket.send_json({
+                            "type": "phase_change", "phase": "teach",
+                        })
+                        prompt, agent_name, state = orchestrator.process_message(state)
+                        active_sessions[session_id] = (orchestrator, state)
+                        await websocket.send_json({
+                            "type": "message",
+                            "agent": agent_name,
+                            "content": prompt,
+                            "phase": state.phase.value,
+                        })
+
+                elif msg.get("type") == "mcq_answers":
+                    # User submitted MCQ answers
+                    answers = msg.get("answers", [])
+                    response, agent_name, state = orchestrator.process_mcq_answers(
+                        state, answers
+                    )
+                    active_sessions[session_id] = (orchestrator, state)
+
+                    db.add(Message(
+                        session_id=session_id, role="assistant",
+                        agent=agent_name, content=response,
+                    ))
+                    await db.commit()
+
+                    await websocket.send_json({
+                        "type": "message",
+                        "agent": agent_name,
+                        "content": response,
+                        "phase": state.phase.value,
+                    })
+
+                    await _handle_post_evaluation(
+                        websocket, db, session_id, orchestrator, state
+                    )
+
+                elif msg.get("type") == "code_answer":
+                    # User submitted code
+                    code = msg.get("code", "")
+                    response, agent_name, state = orchestrator.process_code_answer(
+                        state, code
+                    )
+                    active_sessions[session_id] = (orchestrator, state)
+
+                    db.add(Message(
+                        session_id=session_id, role="assistant",
+                        agent=agent_name, content=response,
+                    ))
+                    await db.commit()
+
+                    await websocket.send_json({
+                        "type": "message",
+                        "agent": agent_name,
+                        "content": response,
+                        "phase": state.phase.value,
+                    })
+
+                    await _handle_post_evaluation(
+                        websocket, db, session_id, orchestrator, state
+                    )
+
+                elif msg.get("type") == "message":
                     user_content = msg["content"]
 
                     # Save user message
@@ -258,6 +351,32 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         state, user_content
                     )
                     active_sessions[session_id] = (orchestrator, state)
+
+                    # Check for special response types (MCQ, code challenge)
+                    if response == "__MCQ__":
+                        # Send MCQ questions to client
+                        await websocket.send_json({
+                            "type": "mcq",
+                            "questions": state.mcq_questions,
+                            "phase": "quiz",
+                        })
+                        await websocket.send_json({
+                            "type": "phase_change", "phase": "quiz",
+                        })
+                        continue
+
+                    if response == "__CODE_CHALLENGE__":
+                        # Send code challenge to client
+                        await websocket.send_json({
+                            "type": "code_challenge",
+                            "problem": state.code_challenge.get("problem", ""),
+                            "hints": state.code_challenge.get("hints", []),
+                            "phase": "evaluate",
+                        })
+                        await websocket.send_json({
+                            "type": "phase_change", "phase": "evaluate",
+                        })
+                        continue
 
                     # Save agent response
                     db.add(Message(
@@ -275,38 +394,9 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
                     # Send phase change if needed
                     if agent_name == "tester":
-                        evaluation = state.last_evaluation
-                        await websocket.send_json({
-                            "type": "score_update",
-                            "score": evaluation.score if evaluation else 0,
-                            "gaps": evaluation.gaps if evaluation else [],
-                        })
-
-                        if state.phase == Phase.COMPLETE:
-                            await websocket.send_json({
-                                "type": "phase_change",
-                                "phase": "complete",
-                            })
-
-                            # Update skill and review schedule
-                            session_record = await db.get(Session, session_id)
-                            if session_record and session_record.concept_id:
-                                await update_skill(
-                                    db, session_record.concept_id,
-                                    evaluation.score, evaluation.gaps,
-                                )
-                                await update_review_schedule(
-                                    db, session_record.concept_id,
-                                    evaluation.score,
-                                )
-                                session_record.phase = "complete"
-                                session_record.ended_at = datetime.datetime.utcnow()
-                                await db.commit()
-                        else:
-                            await websocket.send_json({
-                                "type": "phase_change",
-                                "phase": state.phase.value,
-                            })
+                        await _handle_post_evaluation(
+                            websocket, db, session_id, orchestrator, state
+                        )
 
         except WebSocketDisconnect:
             # Clean up on disconnect
@@ -316,3 +406,63 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 if session_record:
                     session_record.phase = state.phase.value
                     await db.commit()
+
+
+async def _handle_post_evaluation(
+    websocket: WebSocket,
+    db: AsyncSession,
+    session_id: int,
+    orchestrator: Orchestrator,
+    state,
+):
+    """Handle post-evaluation: send score, complete session if mastered."""
+    evaluation = state.last_evaluation
+    if not evaluation:
+        return
+
+    await websocket.send_json({
+        "type": "score_update",
+        "score": evaluation.score,
+        "gaps": evaluation.gaps,
+    })
+
+    if state.phase == Phase.COMPLETE:
+        await websocket.send_json({
+            "type": "phase_change",
+            "phase": "complete",
+        })
+
+        # Update skill and review schedule
+        session_record = await db.get(Session, session_id)
+        if session_record and session_record.concept_id:
+            await update_skill(
+                db, session_record.concept_id,
+                evaluation.score, evaluation.gaps,
+            )
+            await update_review_schedule(
+                db, session_record.concept_id,
+                evaluation.score,
+            )
+            session_record.phase = "complete"
+            session_record.ended_at = datetime.datetime.utcnow()
+
+            # Generate and store session summary
+            summary = generate_summary(
+                orchestrator.professor,
+                state.topic,
+                state.conversation_history,
+                mode=state.mode,
+            )
+            session_record.summary = summary
+            await db.commit()
+
+            # Send summary to client
+            await websocket.send_json({
+                "type": "summary",
+                "content": summary,
+            })
+    else:
+        await websocket.send_json({
+            "type": "phase_change",
+            "phase": state.phase.value,
+        })

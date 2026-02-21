@@ -30,6 +30,7 @@ def ask_questions(
     user_explanation: str,
     conversation_history: list[dict],
     skill_level: float,
+    mode: str = "concept",
 ) -> str:
     difficulty = "basic" if skill_level < 30 else "probing" if skill_level < 70 else "challenging"
 
@@ -40,16 +41,31 @@ def ask_questions(
             role = msg.get("agent", msg.get("role", "unknown"))
             history_text += f"[{role}]: {msg['content']}\n"
 
+    if mode == "code":
+        focus = (
+            f"Ask 1-2 {difficulty} questions about the code the user explained. "
+            "Focus on:\n"
+            "- What happens with edge cases (empty input, large input, duplicates)?\n"
+            "- Could a different data structure or algorithm be used instead?\n"
+            "- What's the time/space complexity and why?\n"
+            "- How would the code change for a common variation of this problem?\n"
+            "Do NOT correct them — just ask questions that would reveal gaps."
+        )
+    else:
+        focus = (
+            f"Ask 1-2 {difficulty} follow-up questions that test whether the user "
+            f"truly understands the concept. Focus on areas where their explanation "
+            f"was vague, incomplete, or potentially incorrect. "
+            f"Do NOT correct them — just ask questions that would reveal gaps."
+        )
+
     task = Task(
         description=(
             f"The user is teaching you about '{topic}'. "
             f"Their latest explanation: \"{user_explanation}\"\n\n"
             f"{history_text}\n"
             f"Your current difficulty level: {difficulty}. "
-            f"Ask 1-2 {difficulty} follow-up questions that test whether the user "
-            f"truly understands the concept. Focus on areas where their explanation "
-            f"was vague, incomplete, or potentially incorrect. "
-            f"Do NOT correct them — just ask questions that would reveal gaps."
+            f"{focus}"
         ),
         expected_output=(
             "1-2 thoughtful questions as a curious student would ask, "

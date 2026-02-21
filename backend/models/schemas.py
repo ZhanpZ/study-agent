@@ -4,12 +4,14 @@ from datetime import datetime
 
 class SessionStart(BaseModel):
     topic: str
+    mode: str = "concept"  # "concept" or "code"
 
 
 class SessionResponse(BaseModel):
     id: int
     concept_id: int | None
     phase: str
+    mode: str
     started_at: datetime
 
     model_config = {"from_attributes": True}

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import ConceptDetail from "../components/ConceptDetail";
 
 export default function Dashboard() {
   const [skills, setSkills] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedConcept, setSelectedConcept] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -43,15 +45,20 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-3">
           {skills.map((skill) => (
-            <div
+            <button
               key={skill.concept_id}
-              className="bg-gray-800/60 border border-gray-700 rounded-lg p-4"
+              onClick={() => setSelectedConcept(skill)}
+              className="w-full text-left bg-gray-800/60 border border-gray-700 rounded-lg p-4
+                         hover:border-gray-500 transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-white font-medium">{skill.concept_name}</h3>
-                <span className="text-sm font-bold text-white">
-                  {Math.round(skill.score)}/100
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Click for notes</span>
+                  <span className="text-sm font-bold text-white">
+                    {Math.round(skill.score)}/100
+                  </span>
+                </div>
               </div>
               <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
                 <div
@@ -70,9 +77,19 @@ export default function Dashboard() {
                   Gaps: {skill.misconceptions.slice(0, 3).join(", ")}
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
+      )}
+
+      {/* Concept detail modal */}
+      {selectedConcept && (
+        <ConceptDetail
+          conceptId={selectedConcept.concept_id}
+          conceptName={selectedConcept.concept_name}
+          score={selectedConcept.score}
+          onClose={() => setSelectedConcept(null)}
+        />
       )}
     </div>
   );

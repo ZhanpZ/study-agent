@@ -7,6 +7,9 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const [score, setScore] = useState(null);
   const [gaps, setGaps] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [mcqQuestions, setMcqQuestions] = useState(null);
+  const [codeChallenge, setCodeChallenge] = useState(null);
+  const [summary, setSummary] = useState(null);
 
   // Sync initialMessages when they arrive from session restore
   useEffect(() => {
@@ -45,6 +48,23 @@ export default function useWebSocket(sessionId, initialMessages = []) {
           setGaps(data.gaps || []);
           break;
 
+        case "mcq":
+          setMcqQuestions(data.questions);
+          setPhase("quiz");
+          break;
+
+        case "code_challenge":
+          setCodeChallenge({
+            problem: data.problem,
+            hints: data.hints || [],
+          });
+          setPhase("evaluate");
+          break;
+
+        case "summary":
+          setSummary(data.content);
+          break;
+
         case "error":
           setMessages((prev) => [
             ...prev,
@@ -65,6 +85,26 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     }
   }, []);
 
+  const sendReadyToTeach = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "ready_to_teach" }));
+    }
+  }, []);
+
+  const sendMCQAnswers = useCallback((answers) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "mcq_answers", answers }));
+      setMcqQuestions(null);
+    }
+  }, []);
+
+  const sendCodeAnswer = useCallback((code) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "code_answer", code }));
+      setCodeChallenge(null);
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     wsRef.current?.close();
   }, []);
@@ -75,5 +115,10 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     return () => disconnect();
   }, [sessionId, connect, disconnect]);
 
-  return { messages, phase, score, gaps, connected, sendMessage, disconnect };
+  return {
+    messages, phase, score, gaps, connected,
+    mcqQuestions, codeChallenge, summary,
+    sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
+    disconnect,
+  };
 }

@@ -5,8 +5,19 @@ const PHASES = [
   { key: "complete", label: "Complete", color: "bg-purple-500" },
 ];
 
+// Map sub-phases to their parent phase for display
+const PHASE_MAP = {
+  explain: "explain",
+  explain_done: "explain",
+  teach: "teach",
+  quiz: "evaluate",
+  evaluate: "evaluate",
+  complete: "complete",
+};
+
 export default function PhaseIndicator({ currentPhase }) {
-  const currentIdx = PHASES.findIndex((p) => p.key === currentPhase);
+  const mappedPhase = PHASE_MAP[currentPhase] || currentPhase;
+  const currentIdx = PHASES.findIndex((p) => p.key === mappedPhase);
 
   return (
     <div className="flex items-center gap-2 mb-4">

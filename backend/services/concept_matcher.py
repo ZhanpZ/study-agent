@@ -12,6 +12,7 @@ def normalize(text: str) -> str:
     text = text.lower().strip()
     # Remove common instructional prefixes
     noise_prefixes = [
+        r"^(i\s+want\s+to\s+learn\s+about|help\s+me\s+understand|let'?s\s+study|can\s+you\s+explain|walk\s+me\s+through|how\s+does|how\s+do)\s+",
         r"^(give me|teach me|explain|show me|tell me about|what (is|are))\s+",
         r"^(an?\s+overview\s+(of|on)\s+(the\s+)?)",
         r"^(the\s+(core|important|key|main|basic|fundamental)s?\s+)",
@@ -19,8 +20,10 @@ def normalize(text: str) -> str:
     ]
     for pattern in noise_prefixes:
         text = re.sub(pattern, "", text)
+    # Remove leftover articles/prepositions at the start
+    text = re.sub(r"^(the|a|an|of|about|on|in|for|to)\s+", "", text)
     # Remove trailing generic words
-    text = re.sub(r"\s+(concepts?|topics?|fundamentals?|basics?|overview)$", "", text)
+    text = re.sub(r"\s+(concepts?|topics?|fundamentals?|basics?|overview|principles?|ideas?)$", "", text)
     # Collapse whitespace
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -31,6 +34,10 @@ def similarity(a: str, b: str) -> float:
     na, nb = normalize(a), normalize(b)
     if na == nb:
         return 1.0
+    # Substring containment bonus
+    if na and nb and (na in nb or nb in na):
+        shorter, longer = (na, nb) if len(na) <= len(nb) else (nb, na)
+        return max(0.85, len(shorter) / len(longer))
     return SequenceMatcher(None, na, nb).ratio()
 
 

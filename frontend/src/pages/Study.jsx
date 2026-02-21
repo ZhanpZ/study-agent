@@ -5,7 +5,12 @@ import Chat from "../components/Chat";
 
 export default function Study() {
   const [topic, setTopic] = useState("");
-  const { sessionId, setSessionId, setSessionTopic, clearSession } = useSession();
+  const {
+    sessionId, setSessionId,
+    setSessionTopic, sessionMode, setSessionMode,
+    clearSession,
+  } = useSession();
+  const [mode, setMode] = useState("concept");
   const [loading, setLoading] = useState(false);
   const [initialMessages, setInitialMessages] = useState([]);
   const [restoring, setRestoring] = useState(false);
@@ -27,6 +32,7 @@ export default function Study() {
               data.messages.map((m) => ({ agent: m.agent, content: m.content }))
             );
             setRestoredPhase(data.phase);
+            if (data.mode) setSessionMode(data.mode);
           }
         })
         .catch(() => clearSession())
@@ -34,10 +40,14 @@ export default function Study() {
     }
   }, []);
 
-  const { messages, phase, score, gaps, connected, sendMessage } =
-    useWebSocket(sessionId, initialMessages);
+  const {
+    messages, phase, score, gaps, connected,
+    mcqQuestions, codeChallenge, summary,
+    sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
+  } = useWebSocket(sessionId, initialMessages);
 
   const activePhase = restoredPhase || phase;
+  const activeMode = sessionMode || mode;
 
   const startSession = async (e) => {
     e.preventDefault();
@@ -48,10 +58,11 @@ export default function Study() {
       const res = await fetch("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: topic.trim() }),
+        body: JSON.stringify({ topic: topic.trim(), mode }),
       });
       const data = await res.json();
       setSessionTopic(topic.trim());
+      setSessionMode(mode);
       setSessionId(data.id);
       setInitialMessages([]);
       hasRestored.current = true;
@@ -74,15 +85,50 @@ export default function Study() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <h2 className="text-3xl font-bold text-white mb-2">What do you want to learn?</h2>
-        <p className="text-gray-400 mb-8">
-          Enter a CS topic and the Professor will explain it to you.
+        <p className="text-gray-400 mb-6">
+          Choose a mode and enter a topic to get started.
         </p>
+
+        {/* Mode toggle */}
+        <div className="flex gap-3 mb-6">
+          <button
+            onClick={() => setMode("concept")}
+            className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+              mode === "concept"
+                ? "bg-blue-600 border-blue-500 text-white"
+                : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
+            }`}
+          >
+            Concept Mode
+          </button>
+          <button
+            onClick={() => setMode("code")}
+            className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+              mode === "code"
+                ? "bg-emerald-600 border-emerald-500 text-white"
+                : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
+            }`}
+          >
+            Code Mode
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500 mb-6 max-w-md text-center">
+          {mode === "concept"
+            ? "Focus on understanding concepts through analogies and explanations. Tested with multiple choice questions."
+            : "Focus on code templates and variations. Tested with coding challenges."}
+        </p>
+
         <form onSubmit={startSession} className="w-full max-w-md flex gap-2">
           <input
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Binary Search Trees, TCP/IP, Dynamic Programming..."
+            placeholder={
+              mode === "concept"
+                ? "e.g. Binary Search Trees, TCP/IP, Dynamic Programming..."
+                : "e.g. BFS, Merge Sort, Two Pointer Pattern..."
+            }
             className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
                        text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
           />
@@ -111,7 +157,14 @@ export default function Study() {
   // Active session
   return (
     <div className="h-[calc(100vh-120px)]">
-      <div className="flex justify-end mb-2">
+      <div className="flex items-center justify-between mb-2">
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+          activeMode === "code"
+            ? "bg-emerald-900/40 text-emerald-400 border border-emerald-700/50"
+            : "bg-blue-900/40 text-blue-400 border border-blue-700/50"
+        }`}>
+          {activeMode === "code" ? "Code Mode" : "Concept Mode"}
+        </span>
         <button
           onClick={handleNewSession}
           className="px-3 py-1 text-xs text-gray-400 border border-gray-700 rounded-lg
@@ -126,7 +179,14 @@ export default function Study() {
         score={score}
         gaps={gaps}
         connected={connected}
+        mode={activeMode}
+        mcqQuestions={mcqQuestions}
+        codeChallenge={codeChallenge}
+        summary={summary}
         onSend={sendMessage}
+        onReadyToTeach={sendReadyToTeach}
+        onSubmitMCQ={sendMCQAnswers}
+        onSubmitCode={sendCodeAnswer}
       />
     </div>
   );

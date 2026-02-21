@@ -54,6 +54,8 @@ class Session(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id"), nullable=True)
     phase: Mapped[str] = mapped_column(String(50), default="explain")
+    mode: Mapped[str] = mapped_column(String(20), default="concept")
+    summary: Mapped[str] = mapped_column(Text, nullable=True, default=None)
     started_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
