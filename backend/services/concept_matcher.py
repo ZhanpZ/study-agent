@@ -4,7 +4,7 @@ import re
 from difflib import SequenceMatcher
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.models.tables import Concept
+from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session
 
 
 def normalize(text: str) -> str:
@@ -68,3 +68,58 @@ async def find_matching_concept(
         return best_match
 
     return None
+
+
+async def deduplicate_concepts(db: AsyncSession, threshold: float = 0.7) -> int:
+    """Scan all concepts and merge duplicates. Returns number of merges performed."""
+    result = await db.execute(select(Concept).order_by(Concept.id))
+    concepts = list(result.scalars().all())
+    merged_count = 0
+    removed_ids: set[int] = set()
+
+    for i, target in enumerate(concepts):
+        if target.id in removed_ids:
+            continue
+        for source in concepts[i + 1:]:
+            if source.id in removed_ids:
+                continue
+            if similarity(target.name, source.name) >= threshold:
+                # Merge source into target
+                # Move sessions
+                sess_result = await db.execute(
+                    select(Session).where(Session.concept_id == source.id)
+                )
+                for session in sess_result.scalars().all():
+                    session.concept_id = target.id
+
+                # Merge skill scores (keep highest)
+                target_skill_r = await db.execute(
+                    select(SkillScore).where(SkillScore.concept_id == target.id)
+                )
+                target_skill = target_skill_r.scalar_one_or_none()
+                source_skill_r = await db.execute(
+                    select(SkillScore).where(SkillScore.concept_id == source.id)
+                )
+                source_skill = source_skill_r.scalar_one_or_none()
+
+                if source_skill:
+                    if target_skill and source_skill.score > target_skill.score:
+                        target_skill.score = source_skill.score
+                    await db.delete(source_skill)
+
+                # Delete source review schedule
+                source_rev_r = await db.execute(
+                    select(ReviewSchedule).where(ReviewSchedule.concept_id == source.id)
+                )
+                source_rev = source_rev_r.scalar_one_or_none()
+                if source_rev:
+                    await db.delete(source_rev)
+
+                await db.delete(source)
+                removed_ids.add(source.id)
+                merged_count += 1
+
+    if merged_count > 0:
+        await db.commit()
+
+    return merged_count

@@ -6,6 +6,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./study.db")
 
-# GPT-4o for the Tester (needs strong reasoning), GPT-4o-mini for others
+# GPT-4o for Professor (best educational content) and Tester (strong reasoning)
+# GPT-4o-mini for Student (just asks probing questions)
 MODEL_STRONG = "gpt-4o"
+MODEL_PROFESSOR = "gpt-4o"
 MODEL_FAST = "gpt-4o-mini"

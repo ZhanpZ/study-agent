@@ -19,12 +19,18 @@ from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
 )
-from backend.services.concept_matcher import find_matching_concept
+from backend.services.concept_matcher import find_matching_concept, deduplicate_concepts
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Auto-merge duplicate concepts from before fuzzy matching was added
+    async for db in get_db():
+        merged = await deduplicate_concepts(db)
+        if merged:
+            print(f"Merged {merged} duplicate concept(s) on startup")
+        break
     yield
 
 
@@ -273,12 +279,22 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
                 if msg.get("type") == "ready_to_teach":
                     # User clicked "Ready to Teach"
-                    if state.phase == Phase.TEACH:
+                    if state.phase == Phase.EXPLAIN_DONE:
+                        state = orchestrator.transition_to_teach(state)
+                        active_sessions[session_id] = (orchestrator, state)
+
                         await websocket.send_json({
                             "type": "phase_change", "phase": "teach",
                         })
                         prompt, agent_name, state = orchestrator.process_message(state)
                         active_sessions[session_id] = (orchestrator, state)
+
+                        db.add(Message(
+                            session_id=session_id, role="assistant",
+                            agent=agent_name, content=prompt,
+                        ))
+                        await db.commit()
+
                         await websocket.send_json({
                             "type": "message",
                             "agent": agent_name,

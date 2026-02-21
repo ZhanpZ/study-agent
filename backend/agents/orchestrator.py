@@ -1,6 +1,6 @@
 from enum import Enum
 from dataclasses import dataclass, field
-from backend.agents.professor import create_professor_agent, explain_concept
+from backend.agents.professor import create_professor_agent, explain_concept, answer_followup
 from backend.agents.student import create_student_agent, ask_questions
 from backend.agents.tester import (
     create_tester_agent, evaluate_understanding, generate_mcq, score_mcq,
@@ -11,6 +11,7 @@ from backend.models.schemas import TesterEvaluation
 
 class Phase(str, Enum):
     EXPLAIN = "explain"
+    EXPLAIN_DONE = "explain_done"  # Professor explained; user can ask follow-ups
     TEACH = "teach"
     EVALUATE = "evaluate"
     QUIZ = "quiz"  # MCQ phase for concept mode
@@ -52,6 +53,9 @@ class Orchestrator:
         if state.phase == Phase.EXPLAIN:
             return self._handle_explain(state)
 
+        elif state.phase == Phase.EXPLAIN_DONE:
+            return self._handle_explain_followup(state, user_message)
+
         elif state.phase == Phase.TEACH:
             if user_message is None:
                 if state.mode == "code":
@@ -90,8 +94,42 @@ class Orchestrator:
             "agent": "professor",
             "content": response,
         })
-        state.phase = Phase.TEACH
+        state.phase = Phase.EXPLAIN_DONE
         return (response, "professor", state)
+
+    def _handle_explain_followup(
+        self, state: SessionState, user_message: str | None
+    ) -> tuple[str, str, SessionState]:
+        """Handle follow-up questions during the explain phase."""
+        if not user_message:
+            return ("Feel free to ask any questions, or click 'Ready to Teach' when you're ready!", "system", state)
+
+        state.conversation_history.append({
+            "role": "user",
+            "agent": "user",
+            "content": user_message,
+        })
+
+        response = answer_followup(
+            self.professor,
+            state.topic,
+            user_message,
+            state.conversation_history,
+            state.skill_level,
+            mode=state.mode,
+        )
+        state.conversation_history.append({
+            "role": "assistant",
+            "agent": "professor",
+            "content": response,
+        })
+        # Stay in EXPLAIN_DONE — user can keep asking or click Ready to Teach
+        return (response, "professor", state)
+
+    def transition_to_teach(self, state: SessionState) -> SessionState:
+        """Transition from EXPLAIN_DONE to TEACH phase."""
+        state.phase = Phase.TEACH
+        return state
 
     def _handle_teach(
         self, state: SessionState, user_message: str

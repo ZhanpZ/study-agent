@@ -12,6 +12,8 @@ export default function Chat({
   const [codeInput, setCodeInput] = useState("");
   const messagesEndRef = useRef(null);
   const isTeachPhase = phase === "teach";
+  const isExplainDone = phase === "explain_done";
+  const canType = isTeachPhase || isExplainDone;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -19,7 +21,7 @@ export default function Chat({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!input.trim() || !isTeachPhase) return;
+    if (!input.trim() || !canType) return;
     onSend(input.trim());
     setInput("");
   };
@@ -113,64 +115,66 @@ export default function Chat({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Ready to Teach button */}
-      {phase === "explain_done" && (
-        <button
-          onClick={onReadyToTeach}
-          className="w-full py-3 mb-2 bg-green-600 text-white font-medium rounded-lg
-                     hover:bg-green-500 transition-colors"
-        >
-          I'm Ready to Teach
-        </button>
-      )}
-
-      {/* Input — only shown during teach phase */}
-      {phase !== "explain_done" && phase !== "quiz" && !(phase === "evaluate" && codeChallenge) && (
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          {mode === "code" && isTeachPhase ? (
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              rows={3}
-              placeholder="Explain the code in your own words..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
-                         text-white font-mono placeholder-gray-500 focus:outline-none
-                         focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
-            />
-          ) : (
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                isTeachPhase
-                  ? "Explain the concept in your own words..."
-                  : phase === "complete"
-                  ? "Session complete!"
-                  : "Waiting for agent..."
-              }
-              disabled={!isTeachPhase}
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
-                         text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            />
+      {/* Input area — shown during explain_done (follow-up questions) and teach phase */}
+      {phase !== "quiz" && !(phase === "evaluate" && codeChallenge) && (
+        <>
+          {isExplainDone && (
+            <button
+              onClick={onReadyToTeach}
+              className="w-full py-3 mb-2 bg-green-600 text-white font-medium rounded-lg
+                         hover:bg-green-500 transition-colors"
+            >
+              I'm Ready to Teach
+            </button>
           )}
-          <button
-            type="submit"
-            disabled={!isTeachPhase || !input.trim()}
-            className="px-6 py-3 bg-indigo-600 text-white text-sm font-medium rounded-lg
-                       hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors"
-          >
-            Send
-          </button>
-        </form>
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            {mode === "code" && isTeachPhase ? (
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+                rows={3}
+                placeholder="Explain the code in your own words..."
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
+                           text-white font-mono placeholder-gray-500 focus:outline-none
+                           focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
+              />
+            ) : (
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  isExplainDone
+                    ? "Ask the professor a follow-up question..."
+                    : isTeachPhase
+                    ? "Explain the concept in your own words..."
+                    : phase === "complete"
+                    ? "Session complete!"
+                    : "Waiting for agent..."
+                }
+                disabled={!canType}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
+                           text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            )}
+            <button
+              type="submit"
+              disabled={!canType || !input.trim()}
+              className="px-6 py-3 bg-indigo-600 text-white text-sm font-medium rounded-lg
+                         hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
+                         transition-colors"
+            >
+              Send
+            </button>
+          </form>
+        </>
       )}
     </div>
   );
