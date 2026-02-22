@@ -12,6 +12,7 @@ export default function Chat({
   const [input, setInput] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const messagesEndRef = useRef(null);
+  const isLeetcode = mode === "leetcode";
   const isTeachPhase = phase === "teach";
   const isExplainDone = phase === "explain_done";
   const canType = isTeachPhase || isExplainDone;
@@ -43,7 +44,7 @@ export default function Chat({
   return (
     <div className="flex flex-col h-full">
       {/* Phase indicator */}
-      <PhaseIndicator currentPhase={phase} />
+      <PhaseIndicator currentPhase={phase} mode={mode} />
 
       {/* Score bar (shown after first evaluation) */}
       {score !== null && (
@@ -140,10 +141,13 @@ export default function Chat({
           {isExplainDone && (
             <button
               onClick={onReadyToTeach}
-              className="w-full py-3 mb-2 bg-green-600 text-white font-medium rounded-lg
-                         hover:bg-green-500 transition-colors"
+              className={`w-full py-3 mb-2 text-white font-medium rounded-lg transition-colors ${
+                isLeetcode
+                  ? "bg-amber-600 hover:bg-amber-500"
+                  : "bg-green-600 hover:bg-green-500"
+              }`}
             >
-              I'm Ready to Teach
+              {isLeetcode ? "Ready for Challenge" : "I'm Ready to Teach"}
             </button>
           )}
           <form onSubmit={handleSubmit} className="flex gap-2">

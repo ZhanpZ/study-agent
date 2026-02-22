@@ -1,7 +1,13 @@
-const PHASES = [
+const ALL_PHASES = [
   { key: "explain", label: "Learn", color: "bg-blue-500" },
   { key: "teach", label: "Teach", color: "bg-green-500" },
   { key: "evaluate", label: "Evaluate", color: "bg-orange-500" },
+  { key: "complete", label: "Complete", color: "bg-purple-500" },
+];
+
+const LEETCODE_PHASES = [
+  { key: "explain", label: "Learn", color: "bg-blue-500" },
+  { key: "evaluate", label: "Challenge", color: "bg-amber-500" },
   { key: "complete", label: "Complete", color: "bg-purple-500" },
 ];
 
@@ -15,13 +21,14 @@ const PHASE_MAP = {
   complete: "complete",
 };
 
-export default function PhaseIndicator({ currentPhase }) {
+export default function PhaseIndicator({ currentPhase, mode }) {
+  const phases = mode === "leetcode" ? LEETCODE_PHASES : ALL_PHASES;
   const mappedPhase = PHASE_MAP[currentPhase] || currentPhase;
-  const currentIdx = PHASES.findIndex((p) => p.key === mappedPhase);
+  const currentIdx = phases.findIndex((p) => p.key === mappedPhase);
 
   return (
     <div className="flex items-center gap-2 mb-4">
-      {PHASES.map((phase, idx) => (
+      {phases.map((phase, idx) => (
         <div key={phase.key} className="flex items-center gap-2">
           <div
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
@@ -35,7 +42,7 @@ export default function PhaseIndicator({ currentPhase }) {
             {idx < currentIdx && <span>&#10003;</span>}
             {phase.label}
           </div>
-          {idx < PHASES.length - 1 && (
+          {idx < phases.length - 1 && (
             <div
               className={`w-8 h-0.5 ${
                 idx < currentIdx ? "bg-gray-600" : "bg-gray-800"

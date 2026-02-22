@@ -298,8 +298,25 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 msg = json.loads(data)
 
                 if msg.get("type") == "ready_to_teach":
-                    # User clicked "Ready to Teach"
+                    # User clicked "Ready to Teach" / "Ready for Challenge"
                     if state.phase == Phase.EXPLAIN_DONE:
+                        # Leetcode mode skips teach → goes straight to code challenge
+                        if state.mode == "leetcode":
+                            response, agent_name, state = orchestrator.transition_to_evaluate(state)
+                            active_sessions[session_id] = (orchestrator, state)
+
+                            if response == "__CODE_CHALLENGE__":
+                                await websocket.send_json({
+                                    "type": "code_challenge",
+                                    "problem": state.code_challenge.get("problem", ""),
+                                    "hints": state.code_challenge.get("hints", []),
+                                    "phase": "evaluate",
+                                })
+                                await websocket.send_json({
+                                    "type": "phase_change", "phase": "evaluate",
+                                })
+                            continue
+
                         state = orchestrator.transition_to_teach(state)
                         active_sessions[session_id] = (orchestrator, state)
 

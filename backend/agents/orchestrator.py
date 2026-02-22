@@ -139,6 +139,11 @@ class Orchestrator:
         state.phase = Phase.TEACH
         return state
 
+    def transition_to_evaluate(self, state: SessionState) -> tuple[str, str, SessionState]:
+        """Skip TEACH and go directly to EVALUATE (used for leetcode mode)."""
+        state.phase = Phase.EVALUATE
+        return self._handle_evaluate(state)
+
     def _handle_teach(
         self, state: SessionState, user_message: str
     ) -> tuple[str, str, SessionState]:
@@ -240,6 +245,13 @@ class Orchestrator:
         if evaluation.mastered:
             state.phase = Phase.COMPLETE
             feedback += "You've demonstrated strong understanding! This concept is now mastered."
+        elif state.mode == "leetcode":
+            # Leetcode has no teach phase — complete after evaluation
+            state.phase = Phase.COMPLETE
+            feedback += (
+                "Session complete! Review the gaps above and practice similar problems "
+                "to strengthen your understanding."
+            )
         else:
             state.phase = Phase.TEACH
             feedback += (
