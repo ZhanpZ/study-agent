@@ -16,7 +16,10 @@ from backend.models.schemas import (
 from backend.agents.orchestrator import Orchestrator, Phase
 from backend.agents.professor import generate_summary
 from backend.agents.tester import generate_comprehension_mcqs
-from backend.agents.quiz_generator import create_quiz_agent, generate_algorithm_quiz
+from backend.agents.quiz_generator import (
+    create_quiz_agent, generate_algorithm_quiz, generate_constraint_quiz,
+    create_ml_math_agent, generate_ml_math_question,
+)
 from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
@@ -204,6 +207,22 @@ async def get_algorithm_quiz(topic: str = "all", count: int = 5):
     agent = create_quiz_agent()
     questions = generate_algorithm_quiz(agent, topic_scope=topic, num_questions=min(count, 10))
     return {"questions": questions, "topic": topic}
+
+
+@app.get("/api/constraint-quiz")
+async def get_constraint_quiz(count: int = 5):
+    """Generate keyword + constraint → algorithm matching questions (select all that apply)."""
+    agent = create_quiz_agent()
+    questions = generate_constraint_quiz(agent, num_questions=min(count, 10))
+    return {"questions": questions}
+
+
+@app.get("/api/ml-math")
+async def get_ml_math_question(topic: str = "all"):
+    """Generate a single ML math drill question (math MC + proof MC + ML application)."""
+    agent = create_ml_math_agent()
+    question = generate_ml_math_question(agent, topic=topic)
+    return {"question": question}
 
 
 # ─── WebSocket Endpoint ───────────────────────────────────────────

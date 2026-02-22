@@ -1,5 +1,10 @@
 import { useState } from "react";
 
+const TABS = [
+  { key: "algorithm", label: "Algorithm Selection" },
+  { key: "constraint", label: "Constraint Matching" },
+];
+
 const TOPICS = [
   { value: "all", label: "All Topics" },
   { value: "graphs", label: "Graphs" },
@@ -16,6 +21,37 @@ const TOPICS = [
 ];
 
 export default function AlgorithmQuiz() {
+  const [activeTab, setActiveTab] = useState("algorithm");
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold text-white mb-2">Algorithm Quiz</h2>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 mb-6 bg-gray-800/60 rounded-lg p-1 w-fit">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === tab.key
+                ? "bg-amber-600 text-white"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "algorithm" ? <AlgorithmTab /> : <ConstraintTab />}
+    </div>
+  );
+}
+
+/* ─── Algorithm Selection Tab ─────────────────────────────── */
+
+function AlgorithmTab() {
   const [topic, setTopic] = useState("all");
   const [questions, setQuestions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -53,9 +89,8 @@ export default function AlgorithmQuiz() {
     : 0;
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold text-white mb-2">Algorithm Selection Quiz</h2>
-      <p className="text-gray-400 mb-6">
+    <>
+      <p className="text-gray-400 mb-4 text-sm">
         Given a problem description, pick the best algorithm or approach.
       </p>
 
@@ -85,7 +120,6 @@ export default function AlgorithmQuiz() {
         {loading ? "Generating..." : "Generate Quiz"}
       </button>
 
-      {/* Score summary */}
       {questions && totalAnswered > 0 && (
         <div className="mb-6 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
           <span className="text-sm text-gray-400">
@@ -99,7 +133,6 @@ export default function AlgorithmQuiz() {
         </div>
       )}
 
-      {/* Questions */}
       {questions && (
         <div className="space-y-6">
           {questions.map((q, qIdx) => (
@@ -115,29 +148,179 @@ export default function AlgorithmQuiz() {
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
+
+/* ─── Constraint Matching Tab ─────────────────────────────── */
+
+const COMPLEXITY_REFERENCE = [
+  { constraint: "n ≤ 10", complexity: "O(n!), O(2ⁿ·n)", examples: "Permutations, brute-force" },
+  { constraint: "n ≤ 20", complexity: "O(2ⁿ)", examples: "Bitmask DP, subset enumeration" },
+  { constraint: "n ≤ 100", complexity: "O(n³)", examples: "Floyd-Warshall, cubic DP" },
+  { constraint: "n ≤ 1,000", complexity: "O(n²)", examples: "Quadratic DP, nested loops" },
+  { constraint: "n ≤ 10⁵", complexity: "O(n log n)", examples: "Sorting, segment trees" },
+  { constraint: "n ≤ 10⁶", complexity: "O(n)", examples: "Two pointers, sliding window" },
+  { constraint: "n ≤ 10⁸", complexity: "O(log n), O(1)", examples: "Binary search, math" },
+];
+
+function ConstraintTab() {
+  const [questions, setQuestions] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [selections, setSelections] = useState({});  // { qIdx: Set of letters }
+  const [revealed, setRevealed] = useState({});
+  const [showRef, setShowRef] = useState(false);
+
+  const generateQuiz = async () => {
+    setLoading(true);
+    setQuestions(null);
+    setSelections({});
+    setRevealed({});
+    try {
+      const res = await fetch("/api/constraint-quiz?count=5");
+      const data = await res.json();
+      setQuestions(data.questions);
+    } catch (err) {
+      console.error("Failed to generate quiz:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelection = (qIdx, letter) => {
+    if (revealed[qIdx]) return;
+    setSelections((prev) => {
+      const current = new Set(prev[qIdx] || []);
+      if (current.has(letter)) {
+        current.delete(letter);
+      } else {
+        current.add(letter);
+      }
+      return { ...prev, [qIdx]: current };
+    });
+  };
+
+  const handleReveal = (qIdx) => {
+    setRevealed((prev) => ({ ...prev, [qIdx]: true }));
+  };
+
+  const getScore = (qIdx) => {
+    if (!questions || !revealed[qIdx]) return null;
+    const q = questions[qIdx];
+    const correctSet = new Set(q.correct);
+    const userSet = selections[qIdx] || new Set();
+    const correctPicks = [...userSet].filter((l) => correctSet.has(l)).length;
+    const wrongPicks = [...userSet].filter((l) => !correctSet.has(l)).length;
+    const missed = [...correctSet].filter((l) => !userSet.has(l)).length;
+    return { correctPicks, wrongPicks, missed, total: correctSet.size };
+  };
+
+  const totalAnswered = Object.keys(revealed).length;
+  const totalPerfect = questions
+    ? questions.filter((q, i) => {
+        if (!revealed[i]) return false;
+        const s = getScore(i);
+        return s && s.correctPicks === s.total && s.wrongPicks === 0;
+      }).length
+    : 0;
+
+  return (
+    <>
+      <p className="text-gray-400 mb-2 text-sm">
+        Given problem keywords and constraints, select <strong className="text-white">ALL</strong> algorithms
+        that could solve it within Python's ~10⁷ operation ceiling.
+      </p>
+
+      {/* Reference table toggle */}
+      <button
+        onClick={() => setShowRef(!showRef)}
+        className="text-xs text-amber-400 hover:text-amber-300 mb-4 underline"
+      >
+        {showRef ? "Hide" : "Show"} complexity reference table
+      </button>
+
+      {showRef && (
+        <div className="mb-6 bg-gray-800/60 border border-gray-700 rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-700 text-gray-400">
+                <th className="px-3 py-2 text-left">Constraint</th>
+                <th className="px-3 py-2 text-left">Max Complexity</th>
+                <th className="px-3 py-2 text-left">Examples</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COMPLEXITY_REFERENCE.map((row, i) => (
+                <tr key={i} className="border-b border-gray-800 text-gray-300">
+                  <td className="px-3 py-1.5 font-mono text-amber-400">{row.constraint}</td>
+                  <td className="px-3 py-1.5 font-mono">{row.complexity}</td>
+                  <td className="px-3 py-1.5">{row.examples}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <button
+        onClick={generateQuiz}
+        disabled={loading}
+        className="px-6 py-3 bg-amber-600 text-white font-medium rounded-lg
+                   hover:bg-amber-500 disabled:opacity-50 transition-colors mb-8"
+      >
+        {loading ? "Generating..." : "Generate Quiz"}
+      </button>
+
+      {questions && totalAnswered > 0 && (
+        <div className="mb-6 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
+          <span className="text-sm text-gray-400">
+            Perfect: <span className="text-white font-bold">{totalPerfect}/{totalAnswered}</span>
+            {totalAnswered === questions.length && (
+              <span className="ml-2">
+                ({Math.round((totalPerfect / questions.length) * 100)}%)
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {questions && (
+        <div className="space-y-6">
+          {questions.map((q, qIdx) => (
+            <ConstraintQuestion
+              key={qIdx}
+              index={qIdx}
+              question={q}
+              selected={selections[qIdx] || new Set()}
+              isRevealed={revealed[qIdx]}
+              score={getScore(qIdx)}
+              onToggle={(letter) => toggleSelection(qIdx, letter)}
+              onReveal={() => handleReveal(qIdx)}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ─── Shared: Algorithm Question (single select) ──────────── */
 
 function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSelect, onReveal }) {
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
-      {/* Problem */}
       <p className="text-sm text-white font-medium">{index + 1}. {question.problem}</p>
 
-      {/* Example */}
       {question.example && (
         <div className="bg-gray-900 rounded-lg p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
           {question.example}
         </div>
       )}
 
-      {/* Constraints */}
       {question.constraints && (
         <p className="text-xs text-gray-500">Constraints: {question.constraints}</p>
       )}
 
-      {/* Options */}
       <div className="space-y-2">
         {question.options.map((option, oIdx) => {
           const letter = option.charAt(0);
@@ -171,7 +354,6 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
         })}
       </div>
 
-      {/* Check answer button */}
       {selectedAnswer && !isRevealed && (
         <button
           onClick={onReveal}
@@ -181,7 +363,6 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
         </button>
       )}
 
-      {/* Explanation */}
       {isRevealed && question.explanation && (
         <div
           className={`text-sm p-3 rounded-lg ${
@@ -192,6 +373,114 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
         >
           {selectedAnswer === question.correct ? "Correct! " : "Incorrect. "}
           {question.explanation}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Constraint Question (multi-select) ──────────────────── */
+
+function ConstraintQuestion({ index, question, selected, isRevealed, score, onToggle, onReveal }) {
+  const correctSet = new Set(question.correct);
+
+  return (
+    <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
+      {/* Keywords */}
+      <div className="flex items-start gap-2">
+        <span className="text-sm text-gray-400 font-medium shrink-0">{index + 1}.</span>
+        <div>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {question.keywords.map((kw, i) => (
+              <span
+                key={i}
+                className="px-2 py-0.5 bg-amber-600/20 border border-amber-600/40 rounded text-xs text-amber-300 font-medium"
+              >
+                {kw}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 font-mono">{question.constraints}</p>
+        </div>
+      </div>
+
+      {/* Select-all hint */}
+      {!isRevealed && (
+        <p className="text-xs text-gray-500 italic">Select all algorithms that could work:</p>
+      )}
+
+      {/* Options (multi-select checkboxes) */}
+      <div className="grid grid-cols-2 gap-2">
+        {question.options.map((option, oIdx) => {
+          const letter = option.charAt(0);
+          const isSelected = selected.has(letter);
+          const isCorrect = correctSet.has(letter);
+
+          let optionClass =
+            "bg-gray-900/40 border-gray-700 text-gray-300 hover:border-gray-500 cursor-pointer";
+          if (isRevealed) {
+            if (isCorrect && isSelected) {
+              optionClass = "bg-green-900/30 border-green-600 text-green-300";
+            } else if (isCorrect && !isSelected) {
+              optionClass = "bg-yellow-900/30 border-yellow-600 text-yellow-300";
+            } else if (!isCorrect && isSelected) {
+              optionClass = "bg-red-900/30 border-red-600 text-red-300";
+            } else {
+              optionClass = "bg-gray-900/40 border-gray-700 text-gray-500";
+            }
+          } else if (isSelected) {
+            optionClass = "bg-indigo-600/30 border-indigo-500 text-white";
+          }
+
+          return (
+            <button
+              key={oIdx}
+              onClick={() => onToggle(letter)}
+              disabled={isRevealed}
+              className={`text-left px-3 py-2 rounded-lg text-sm transition-colors border disabled:cursor-default flex items-center gap-2 ${optionClass}`}
+            >
+              <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${
+                isSelected
+                  ? isRevealed
+                    ? isCorrect ? "bg-green-600 border-green-600" : "bg-red-600 border-red-600"
+                    : "bg-indigo-600 border-indigo-600"
+                  : "border-gray-600"
+              }`}>
+                {isSelected && "✓"}
+              </span>
+              {option}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Check answer button */}
+      {selected.size > 0 && !isRevealed && (
+        <button
+          onClick={onReveal}
+          className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 transition-colors"
+        >
+          Check Answer
+        </button>
+      )}
+
+      {/* Score + explanation */}
+      {isRevealed && score && (
+        <div className={`text-sm p-3 rounded-lg space-y-1 ${
+          score.wrongPicks === 0 && score.missed === 0
+            ? "bg-green-900/20 text-green-400 border border-green-700/50"
+            : "bg-amber-900/20 text-amber-400 border border-amber-700/50"
+        }`}>
+          <div className="font-medium">
+            {score.wrongPicks === 0 && score.missed === 0
+              ? "Perfect!"
+              : `${score.correctPicks}/${score.total} correct`}
+            {score.wrongPicks > 0 && `, ${score.wrongPicks} wrong pick${score.wrongPicks > 1 ? "s" : ""}`}
+            {score.missed > 0 && `, ${score.missed} missed`}
+          </div>
+          {question.explanation && (
+            <p className="text-xs opacity-80 whitespace-pre-wrap">{question.explanation}</p>
+          )}
         </div>
       )}
     </div>
