@@ -114,11 +114,14 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                     </span>
                   </div>
                   {!session.has_summary && (
-                    <p className="text-xs text-gray-500 mt-1">No summary available</p>
+                    <p className="text-xs text-gray-500 mt-1">No summary yet</p>
                   )}
                   {session.has_summary && (
                     <p className="text-xs text-gray-400 mt-1">
                       {expandedSession === session.id ? "Click to collapse" : "Click to view notes"}
+                      {session.phase !== "complete" && (
+                        <span className="ml-2 text-yellow-500">(in progress)</span>
+                      )}
                     </p>
                   )}
                 </button>

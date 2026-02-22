@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.database import init_db, get_db
-from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message
+from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory
 from backend.models.schemas import (
     SessionStart, SessionResponse, SkillResponse, ReviewDue, StatsResponse, WSMessage,
     ConceptMerge,
@@ -225,6 +225,50 @@ async def get_ml_math_question(topic: str = "all"):
     return {"question": question}
 
 
+# ─── Quiz History Endpoints ──────────────────────────────────────
+
+
+@app.post("/api/quiz-history")
+async def save_quiz_history(body: dict, db: AsyncSession = Depends(get_db)):
+    """Save a completed quiz attempt."""
+    entry = QuizHistory(
+        quiz_type=body.get("quiz_type", "unknown"),
+        topic=body.get("topic", "all"),
+        questions=body.get("questions", []),
+        answers=body.get("answers", {}),
+        score=body.get("score"),
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return {"id": entry.id, "status": "saved"}
+
+
+@app.get("/api/quiz-history")
+async def get_quiz_history(
+    quiz_type: str | None = None, limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get recent quiz history, optionally filtered by type."""
+    query = select(QuizHistory).order_by(QuizHistory.created_at.desc()).limit(limit)
+    if quiz_type:
+        query = query.where(QuizHistory.quiz_type == quiz_type)
+    result = await db.execute(query)
+    entries = result.scalars().all()
+    return [
+        {
+            "id": e.id,
+            "quiz_type": e.quiz_type,
+            "topic": e.topic,
+            "questions": e.questions,
+            "answers": e.answers,
+            "score": e.score,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in entries
+    ]
+
+
 # ─── WebSocket Endpoint ───────────────────────────────────────────
 
 
@@ -310,6 +354,11 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         "type": "comprehension_mcqs",
                         "questions": comprehension_mcqs,
                     })
+
+                # Generate initial summary immediately after explain
+                await _update_summary(
+                    db, websocket, session_id, orchestrator, state
+                )
 
             # Main message loop
             while True:
@@ -426,7 +475,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
                     # Check for special response types (MCQ, code challenge)
                     if response == "__MCQ__":
-                        # Send MCQ questions to client
+                        # Update summary before evaluation
+                        await _update_summary(
+                            db, websocket, session_id, orchestrator, state
+                        )
                         await websocket.send_json({
                             "type": "mcq",
                             "questions": state.mcq_questions,
@@ -438,7 +490,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         continue
 
                     if response == "__CODE_CHALLENGE__":
-                        # Send code challenge to client
+                        # Update summary before evaluation
+                        await _update_summary(
+                            db, websocket, session_id, orchestrator, state
+                        )
                         await websocket.send_json({
                             "type": "code_challenge",
                             "problem": state.code_challenge.get("problem", ""),
@@ -491,6 +546,30 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     await db.commit()
 
 
+async def _update_summary(
+    db: AsyncSession,
+    websocket: WebSocket,
+    session_id: int,
+    orchestrator: Orchestrator,
+    state,
+):
+    """Regenerate and persist the session summary, then send to client."""
+    summary = generate_summary(
+        orchestrator.professor,
+        state.topic,
+        state.conversation_history,
+        mode=state.mode,
+    )
+    session_record = await db.get(Session, session_id)
+    if session_record:
+        session_record.summary = summary
+        await db.commit()
+    await websocket.send_json({
+        "type": "summary",
+        "content": summary,
+    })
+
+
 async def _handle_post_evaluation(
     websocket: WebSocket,
     db: AsyncSession,
@@ -528,22 +607,10 @@ async def _handle_post_evaluation(
             )
             session_record.phase = "complete"
             session_record.ended_at = datetime.datetime.utcnow()
-
-            # Generate and store session summary
-            summary = generate_summary(
-                orchestrator.professor,
-                state.topic,
-                state.conversation_history,
-                mode=state.mode,
-            )
-            session_record.summary = summary
             await db.commit()
 
-            # Send summary to client
-            await websocket.send_json({
-                "type": "summary",
-                "content": summary,
-            })
+            # Final summary update
+            await _update_summary(db, websocket, session_id, orchestrator, state)
     else:
         await websocket.send_json({
             "type": "phase_change",

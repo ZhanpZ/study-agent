@@ -65,6 +65,20 @@ class Session(Base):
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
 
 
+class QuizHistory(Base):
+    __tablename__ = "quiz_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    quiz_type: Mapped[str] = mapped_column(String(30))  # "algorithm", "constraint", "ml_math"
+    topic: Mapped[str] = mapped_column(String(255), default="all")
+    questions: Mapped[dict] = mapped_column(JSON)  # full question data
+    answers: Mapped[dict] = mapped_column(JSON, nullable=True)  # user answers
+    score: Mapped[float] = mapped_column(Float, nullable=True)  # percentage correct
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
 class Message(Base):
     __tablename__ = "messages"
 

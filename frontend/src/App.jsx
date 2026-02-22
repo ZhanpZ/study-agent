@@ -3,10 +3,12 @@ import Study from "./pages/Study";
 import Review from "./pages/Review";
 import Dashboard from "./pages/Dashboard";
 import AlgorithmQuiz from "./pages/AlgorithmQuiz";
+import MLMathDrill from "./pages/MLMathDrill";
 
 const NAV_ITEMS = [
   { path: "/", label: "Study", icon: "📖" },
   { path: "/algorithm-quiz", label: "Algo Quiz", icon: "🧩" },
+  { path: "/ml-math", label: "ML Math", icon: "📐" },
   { path: "/review", label: "Review", icon: "🔄" },
   { path: "/dashboard", label: "Dashboard", icon: "📊" },
 ];
@@ -43,6 +45,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Study />} />
           <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
+          <Route path="/ml-math" element={<MLMathDrill />} />
           <Route path="/review" element={<Review />} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Routes>

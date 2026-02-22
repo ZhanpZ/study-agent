@@ -1,4 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+function saveQuizHistory(quiz_type, topic, questions, answers, score) {
+  fetch("/api/quiz-history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quiz_type, topic, questions, answers, score }),
+  }).catch(() => {});
+}
 
 const TABS = [
   { key: "algorithm", label: "Algorithm Selection" },
@@ -87,6 +95,16 @@ function AlgorithmTab() {
   const totalCorrect = questions
     ? questions.filter((q, i) => revealed[i] && answers[i] === q.correct).length
     : 0;
+
+  // Auto-save when all questions answered
+  useEffect(() => {
+    if (questions && totalAnswered === questions.length) {
+      saveQuizHistory(
+        "algorithm", topic, questions, answers,
+        Math.round((totalCorrect / questions.length) * 100),
+      );
+    }
+  }, [totalAnswered]);
 
   return (
     <>
@@ -223,6 +241,20 @@ function ConstraintTab() {
         return s && s.correctPicks === s.total && s.wrongPicks === 0;
       }).length
     : 0;
+
+  // Auto-save when all questions answered
+  useEffect(() => {
+    if (questions && totalAnswered === questions.length) {
+      const selObj = {};
+      for (const [k, v] of Object.entries(selections)) {
+        selObj[k] = [...v];
+      }
+      saveQuizHistory(
+        "constraint", "all", questions, selObj,
+        Math.round((totalPerfect / questions.length) * 100),
+      );
+    }
+  }, [totalAnswered]);
 
   return (
     <>
