@@ -22,7 +22,7 @@ class Phase(str, Enum):
 @dataclass
 class SessionState:
     topic: str
-    mode: str = "concept"  # "concept" or "code"
+    mode: str = "concept"  # "concept", "industrial", or "leetcode"
     phase: Phase = Phase.EXPLAIN
     skill_level: float = 0.0
     conversation_history: list[dict] = field(default_factory=list)
@@ -58,17 +58,25 @@ class Orchestrator:
 
         elif state.phase == Phase.TEACH:
             if user_message is None:
-                if state.mode == "code":
+                if state.mode == "industrial":
                     return (
-                        "Now it's your turn! Explain the code I just showed you about "
-                        f"'{state.topic}' — walk me through how it works, why it's "
-                        "structured that way, and when you'd use each variation.",
+                        "Now it's your turn! Explain the production code I just showed you about "
+                        f"'{state.topic}' — walk me through the design decisions, "
+                        "why it's structured this way, and what patterns are being used.",
+                        "student",
+                        state,
+                    )
+                if state.mode == "leetcode":
+                    return (
+                        "Now it's your turn! Explain the algorithm I just showed you for "
+                        f"'{state.topic}' — walk me through the approach, "
+                        "why it works, and what the time/space complexity is.",
                         "student",
                         state,
                     )
                 return (
                     "Now it's your turn! Teach me what you just learned about "
-                    f"'{state.topic}' as if I'm a fellow student who knows nothing about it.",
+                    f"'{state.topic}' as if I'm a fellow engineer who knows nothing about it.",
                     "student",
                     state,
                 )
@@ -165,7 +173,7 @@ class Orchestrator:
     def _handle_evaluate(self, state: SessionState) -> tuple[str, str, SessionState]:
         if state.mode == "concept":
             return self._handle_evaluate_concept(state)
-        else:
+        else:  # industrial and leetcode both use code evaluation
             return self._handle_evaluate_code(state)
 
     def _handle_evaluate_concept(self, state: SessionState) -> tuple[str, str, SessionState]:
@@ -185,6 +193,7 @@ class Orchestrator:
             self.tester,
             state.topic,
             state.conversation_history,
+            mode=state.mode,
         )
         state.code_challenge = challenge
         return ("__CODE_CHALLENGE__", "tester", state)
@@ -206,6 +215,7 @@ class Orchestrator:
             state.code_challenge,
             code,
             state.conversation_history,
+            mode=state.mode,
         )
         return self._finalize_evaluation(state, evaluation)
 

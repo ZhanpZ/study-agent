@@ -15,6 +15,8 @@ from backend.models.schemas import (
 )
 from backend.agents.orchestrator import Orchestrator, Phase
 from backend.agents.professor import generate_summary
+from backend.agents.tester import generate_comprehension_mcqs
+from backend.agents.quiz_generator import create_quiz_agent, generate_algorithm_quiz
 from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
@@ -196,6 +198,14 @@ async def merge_concepts(body: ConceptMerge, db: AsyncSession = Depends(get_db))
     return {"status": "merged", "target_id": target.id}
 
 
+@app.get("/api/algorithm-quiz")
+async def get_algorithm_quiz(topic: str = "all", count: int = 5):
+    """Generate algorithm selection quiz questions."""
+    agent = create_quiz_agent()
+    questions = generate_algorithm_quiz(agent, topic_scope=topic, num_questions=min(count, 10))
+    return {"questions": questions, "topic": topic}
+
+
 # ─── WebSocket Endpoint ───────────────────────────────────────────
 
 
@@ -271,6 +281,16 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     "type": "phase_change",
                     "phase": "explain_done",
                 })
+
+                # Generate comprehension MCQs based on the explanation
+                comprehension_mcqs = generate_comprehension_mcqs(
+                    orchestrator.tester, state.topic, response,
+                )
+                if comprehension_mcqs:
+                    await websocket.send_json({
+                        "type": "comprehension_mcqs",
+                        "questions": comprehension_mcqs,
+                    })
 
             # Main message loop
             while True:
@@ -407,6 +427,17 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         "content": response,
                         "phase": state.phase.value,
                     })
+
+                    # Generate comprehension MCQs for professor follow-up answers
+                    if state.phase == Phase.EXPLAIN_DONE and agent_name == "professor":
+                        followup_mcqs = generate_comprehension_mcqs(
+                            orchestrator.tester, state.topic, response,
+                        )
+                        if followup_mcqs:
+                            await websocket.send_json({
+                                "type": "comprehension_mcqs",
+                                "questions": followup_mcqs,
+                            })
 
                     # Send phase change if needed
                     if agent_name == "tester":

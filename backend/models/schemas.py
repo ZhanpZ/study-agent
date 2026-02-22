@@ -1,10 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 
 
 class SessionStart(BaseModel):
     topic: str
-    mode: str = "concept"  # "concept" or "code"
+    mode: str = "concept"  # "concept", "industrial", or "leetcode"
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v):
+        if v not in ("concept", "industrial", "leetcode"):
+            raise ValueError("mode must be 'concept', 'industrial', or 'leetcode'")
+        return v
 
 
 class SessionResponse(BaseModel):

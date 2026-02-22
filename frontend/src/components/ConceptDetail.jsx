@@ -2,6 +2,18 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const MODE_BADGE = {
+  concept: "bg-blue-900/40 text-blue-400",
+  industrial: "bg-emerald-900/40 text-emerald-400",
+  leetcode: "bg-amber-900/40 text-amber-400",
+};
+
+const MODE_LABEL = {
+  concept: "Concept",
+  industrial: "Industrial",
+  leetcode: "Leetcode",
+};
+
 export default function ConceptDetail({ conceptId, conceptName, score, onClose }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,11 +95,9 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        session.mode === "code"
-                          ? "bg-emerald-900/40 text-emerald-400"
-                          : "bg-blue-900/40 text-blue-400"
+                        MODE_BADGE[session.mode] || MODE_BADGE.concept
                       }`}>
-                        {session.mode === "code" ? "Code" : "Concept"}
+                        {MODE_LABEL[session.mode] || session.mode}
                       </span>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         session.phase === "complete"
@@ -100,7 +110,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                     <span className="text-xs text-gray-500">
                       {session.started_at
                         ? new Date(session.started_at).toLocaleDateString()
-                        : "—"}
+                        : "---"}
                     </span>
                   </div>
                   {!session.has_summary && (
@@ -119,15 +129,24 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                     {loadingSummary ? (
                       <div className="text-sm text-gray-500">Loading notes...</div>
                     ) : summaryContent ? (
-                      <div className="text-sm text-gray-200 prose prose-invert prose-sm max-w-none
-                                      prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
-                                      prose-p:my-1 prose-li:my-0 prose-ul:my-1 prose-ol:my-1
-                                      prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
-                                      prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
-                                      prose-strong:text-gray-100">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {summaryContent}
-                        </ReactMarkdown>
+                      <div>
+                        {session.mode === "leetcode" && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            <span className="text-xs px-2 py-1 rounded-full bg-amber-900/40 text-amber-400 border border-amber-700/50">
+                              Leetcode Session
+                            </span>
+                          </div>
+                        )}
+                        <div className="text-sm text-gray-200 prose prose-invert prose-sm max-w-none
+                                        prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
+                                        prose-p:my-1 prose-li:my-0 prose-ul:my-1 prose-ol:my-1
+                                        prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
+                                        prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
+                                        prose-strong:text-gray-100">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {summaryContent}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-sm text-gray-500">No notes found.</div>

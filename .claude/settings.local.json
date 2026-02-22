@@ -4,7 +4,8 @@
       "Bash(python:*)",
       "Bash(./venv/Scripts/python:*)",
       "Bash(npm install:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx vite build)"
     ]
   }
 }

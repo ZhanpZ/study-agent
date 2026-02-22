@@ -2,10 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import MessageBubble from "./MessageBubble";
 import PhaseIndicator from "./PhaseIndicator";
 import MCQPanel from "./MCQPanel";
+import ComprehensionPanel from "./ComprehensionPanel";
 
 export default function Chat({
   messages, phase, score, gaps, connected, mode,
-  mcqQuestions, codeChallenge, summary,
+  mcqQuestions, codeChallenge, summary, comprehensionMcqs,
   onSend, onReadyToTeach, onSubmitMCQ, onSubmitCode,
 }) {
   const [input, setInput] = useState("");
@@ -14,6 +15,12 @@ export default function Chat({
   const isTeachPhase = phase === "teach";
   const isExplainDone = phase === "explain_done";
   const canType = isTeachPhase || isExplainDone;
+  const isCodeMode = mode !== "concept";
+
+  const showComprehensionPanel =
+    comprehensionMcqs &&
+    comprehensionMcqs.length > 0 &&
+    (phase === "explain" || phase === "explain_done");
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -61,58 +68,70 @@ export default function Chat({
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-1">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-20">
-            Starting session...
-          </div>
-        )}
-        {messages.map((msg, idx) => (
-          <MessageBubble key={idx} agent={msg.agent} content={msg.content} />
-        ))}
-
-        {/* MCQ panel for concept mode evaluation */}
-        {phase === "quiz" && mcqQuestions && (
-          <div className="my-4">
-            <MCQPanel questions={mcqQuestions} onSubmit={onSubmitMCQ} />
-          </div>
-        )}
-
-        {/* Code challenge for code mode evaluation */}
-        {phase === "evaluate" && codeChallenge && (
-          <div className="my-4 bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
-            <h3 className="text-lg font-semibold text-white">Coding Challenge</h3>
-            <p className="text-sm text-gray-200 whitespace-pre-wrap">
-              {codeChallenge.problem}
-            </p>
-            {codeChallenge.hints.length > 0 && (
-              <div className="text-xs text-gray-400">
-                Hints: {codeChallenge.hints.join(" | ")}
+      {/* Main content — split panel when comprehension MCQs exist */}
+      <div className={`flex-1 overflow-hidden ${showComprehensionPanel ? "flex gap-4" : "flex flex-col"}`}>
+        {/* Left side: Chat messages */}
+        <div className={`${showComprehensionPanel ? "w-3/5" : "w-full"} flex flex-col overflow-hidden`}>
+          <div className="flex-1 overflow-y-auto mb-4 space-y-1">
+            {messages.length === 0 && (
+              <div className="text-center text-gray-500 mt-20">
+                Starting session...
               </div>
             )}
-            <textarea
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
-              rows={10}
-              placeholder="Write your code here..."
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-sm
-                         text-white font-mono placeholder-gray-500 focus:outline-none
-                         focus:border-indigo-500 resize-y"
-            />
-            <button
-              onClick={handleCodeSubmit}
-              disabled={!codeInput.trim()}
-              className="w-full py-3 bg-emerald-600 text-white font-medium rounded-lg
-                         hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed
-                         transition-colors"
-            >
-              Submit Code
-            </button>
+            {messages.map((msg, idx) => (
+              <MessageBubble key={idx} agent={msg.agent} content={msg.content} />
+            ))}
+
+            {/* MCQ panel for concept mode evaluation */}
+            {phase === "quiz" && mcqQuestions && (
+              <div className="my-4">
+                <MCQPanel questions={mcqQuestions} onSubmit={onSubmitMCQ} />
+              </div>
+            )}
+
+            {/* Code challenge for code mode evaluation */}
+            {phase === "evaluate" && codeChallenge && (
+              <div className="my-4 bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
+                <h3 className="text-lg font-semibold text-white">Coding Challenge</h3>
+                <p className="text-sm text-gray-200 whitespace-pre-wrap">
+                  {codeChallenge.problem}
+                </p>
+                {codeChallenge.hints.length > 0 && (
+                  <div className="text-xs text-gray-400">
+                    Hints: {codeChallenge.hints.join(" | ")}
+                  </div>
+                )}
+                <textarea
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value)}
+                  rows={10}
+                  placeholder="Write your code here..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-sm
+                             text-white font-mono placeholder-gray-500 focus:outline-none
+                             focus:border-indigo-500 resize-y"
+                />
+                <button
+                  onClick={handleCodeSubmit}
+                  disabled={!codeInput.trim()}
+                  className="w-full py-3 bg-emerald-600 text-white font-medium rounded-lg
+                             hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed
+                             transition-colors"
+                >
+                  Submit Code
+                </button>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Right side: Comprehension MCQs (only during explain phases) */}
+        {showComprehensionPanel && (
+          <div className="w-2/5 border-l border-gray-700 pl-4 overflow-y-auto">
+            <ComprehensionPanel questions={comprehensionMcqs} />
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input area — shown during explain_done (follow-up questions) and teach phase */}
@@ -128,7 +147,7 @@ export default function Chat({
             </button>
           )}
           <form onSubmit={handleSubmit} className="flex gap-2">
-            {mode === "code" && isTeachPhase ? (
+            {isCodeMode && isTeachPhase ? (
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

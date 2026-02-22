@@ -42,7 +42,7 @@ export default function Study() {
 
   const {
     messages, phase, score, gaps, connected,
-    mcqQuestions, codeChallenge, summary,
+    mcqQuestions, codeChallenge, summary, comprehensionMcqs,
     sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
   } = useWebSocket(sessionId, initialMessages);
 
@@ -80,6 +80,33 @@ export default function Study() {
     hasRestored.current = false;
   };
 
+  const MODE_CONFIG = {
+    concept: {
+      color: "bg-blue-600 border-blue-500",
+      inactive: "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500",
+      badge: "bg-blue-900/40 text-blue-400 border border-blue-700/50",
+      label: "Concept",
+      description: "Focus on understanding concepts through analogies and explanations. Tested with MCQs.",
+      placeholder: "e.g. Binary Search Trees, TCP/IP, Dynamic Programming...",
+    },
+    industrial: {
+      color: "bg-emerald-600 border-emerald-500",
+      inactive: "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500",
+      badge: "bg-emerald-900/40 text-emerald-400 border border-emerald-700/50",
+      label: "Industrial",
+      description: "Focus on production-quality code, design patterns, SOLID principles, and system design.",
+      placeholder: "e.g. REST API Design, Dependency Injection, Observer Pattern...",
+    },
+    leetcode: {
+      color: "bg-amber-600 border-amber-500",
+      inactive: "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500",
+      badge: "bg-amber-900/40 text-amber-400 border border-amber-700/50",
+      label: "Leetcode",
+      description: "Focus on algorithms, data structures, time/space complexity, and problem-solving patterns.",
+      placeholder: "e.g. Two Sum, BFS, Sliding Window, Merge Sort...",
+    },
+  };
+
   // Topic selection screen
   if (!sessionId) {
     return (
@@ -91,32 +118,21 @@ export default function Study() {
 
         {/* Mode toggle */}
         <div className="flex gap-3 mb-6">
-          <button
-            onClick={() => setMode("concept")}
-            className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-              mode === "concept"
-                ? "bg-blue-600 border-blue-500 text-white"
-                : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
-            }`}
-          >
-            Concept Mode
-          </button>
-          <button
-            onClick={() => setMode("code")}
-            className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-              mode === "code"
-                ? "bg-emerald-600 border-emerald-500 text-white"
-                : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
-            }`}
-          >
-            Code Mode
-          </button>
+          {Object.entries(MODE_CONFIG).map(([key, cfg]) => (
+            <button
+              key={key}
+              onClick={() => setMode(key)}
+              className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors text-white ${
+                mode === key ? cfg.color : cfg.inactive
+              }`}
+            >
+              {cfg.label}
+            </button>
+          ))}
         </div>
 
         <p className="text-xs text-gray-500 mb-6 max-w-md text-center">
-          {mode === "concept"
-            ? "Focus on understanding concepts through analogies and explanations. Tested with multiple choice questions."
-            : "Focus on code templates and variations. Tested with coding challenges."}
+          {MODE_CONFIG[mode].description}
         </p>
 
         <form onSubmit={startSession} className="w-full max-w-md flex gap-2">
@@ -124,11 +140,7 @@ export default function Study() {
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder={
-              mode === "concept"
-                ? "e.g. Binary Search Trees, TCP/IP, Dynamic Programming..."
-                : "e.g. BFS, Merge Sort, Two Pointer Pattern..."
-            }
+            placeholder={MODE_CONFIG[mode].placeholder}
             className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm
                        text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
           />
@@ -154,16 +166,14 @@ export default function Study() {
     );
   }
 
+  const activeCfg = MODE_CONFIG[activeMode] || MODE_CONFIG.concept;
+
   // Active session
   return (
     <div className="h-[calc(100vh-120px)]">
       <div className="flex items-center justify-between mb-2">
-        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-          activeMode === "code"
-            ? "bg-emerald-900/40 text-emerald-400 border border-emerald-700/50"
-            : "bg-blue-900/40 text-blue-400 border border-blue-700/50"
-        }`}>
-          {activeMode === "code" ? "Code Mode" : "Concept Mode"}
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${activeCfg.badge}`}>
+          {activeCfg.label} Mode
         </span>
         <button
           onClick={handleNewSession}
@@ -183,6 +193,7 @@ export default function Study() {
         mcqQuestions={mcqQuestions}
         codeChallenge={codeChallenge}
         summary={summary}
+        comprehensionMcqs={comprehensionMcqs}
         onSend={sendMessage}
         onReadyToTeach={sendReadyToTeach}
         onSubmitMCQ={sendMCQAnswers}

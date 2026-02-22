@@ -2,9 +2,11 @@ import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Study from "./pages/Study";
 import Review from "./pages/Review";
 import Dashboard from "./pages/Dashboard";
+import AlgorithmQuiz from "./pages/AlgorithmQuiz";
 
 const NAV_ITEMS = [
   { path: "/", label: "Study", icon: "📖" },
+  { path: "/algorithm-quiz", label: "Algo Quiz", icon: "🧩" },
   { path: "/review", label: "Review", icon: "🔄" },
   { path: "/dashboard", label: "Dashboard", icon: "📊" },
 ];
@@ -16,7 +18,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-bold text-white">Study Agent</h1>
           <nav className="flex gap-1">
             {NAV_ITEMS.map(({ path, label, icon }) => (
@@ -37,9 +39,10 @@ export default function App() {
       </header>
 
       {/* Content */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
         <Routes>
           <Route path="/" element={<Study />} />
+          <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
           <Route path="/review" element={<Review />} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Routes>

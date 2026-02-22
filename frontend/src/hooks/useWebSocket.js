@@ -10,6 +10,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const [mcqQuestions, setMcqQuestions] = useState(null);
   const [codeChallenge, setCodeChallenge] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [comprehensionMcqs, setComprehensionMcqs] = useState([]);
 
   // Sync initialMessages when they arrive from session restore
   useEffect(() => {
@@ -41,6 +42,10 @@ export default function useWebSocket(sessionId, initialMessages = []) {
 
         case "phase_change":
           setPhase(data.phase);
+          // Clear comprehension MCQs when leaving explain phases
+          if (data.phase !== "explain" && data.phase !== "explain_done") {
+            setComprehensionMcqs([]);
+          }
           break;
 
         case "score_update":
@@ -59,6 +64,10 @@ export default function useWebSocket(sessionId, initialMessages = []) {
             hints: data.hints || [],
           });
           setPhase("evaluate");
+          break;
+
+        case "comprehension_mcqs":
+          setComprehensionMcqs((prev) => [...prev, ...data.questions]);
           break;
 
         case "summary":
@@ -117,7 +126,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
 
   return {
     messages, phase, score, gaps, connected,
-    mcqQuestions, codeChallenge, summary,
+    mcqQuestions, codeChallenge, summary, comprehensionMcqs,
     sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
     disconnect,
   };
