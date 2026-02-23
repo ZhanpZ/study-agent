@@ -1,4 +1,8 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import remarkGfm from "remark-gfm";
+import rehypeKatex from "rehype-katex";
 
 const TOPICS = [
   { value: "all", label: "All Topics" },
@@ -10,16 +14,35 @@ const TOPICS = [
 ];
 
 const STEPS = [
+  { key: "learn", label: "Learn", color: "bg-amber-500" },
   { key: "math", label: "Math", color: "bg-violet-500" },
   { key: "proof", label: "Proof", color: "bg-blue-500" },
   { key: "application", label: "ML Application", color: "bg-emerald-500" },
 ];
 
+/* ─── Shared Markdown renderer with LaTeX support ──── */
+
+function MathText({ children, className = "" }) {
+  if (!children) return null;
+  return (
+    <div className={`prose prose-invert prose-sm max-w-none
+                     prose-headings:text-gray-100 prose-p:my-1.5 prose-li:my-0
+                     prose-ul:my-1 prose-ol:my-1
+                     prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
+                     prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
+                     prose-strong:text-gray-100 ${className}`}>
+      <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 export default function MLMathDrill() {
   const [topic, setTopic] = useState("all");
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState("math"); // math → proof → application
+  const [step, setStep] = useState("learn"); // learn → math → proof → application
   const [mathAnswer, setMathAnswer] = useState(null);
   const [mathRevealed, setMathRevealed] = useState(false);
   const [proofAnswer, setProofAnswer] = useState(null);
@@ -29,7 +52,7 @@ export default function MLMathDrill() {
   const fetchQuestion = async () => {
     setLoading(true);
     setQuestion(null);
-    setStep("math");
+    setStep("learn");
     setMathAnswer(null);
     setMathRevealed(false);
     setProofAnswer(null);
@@ -55,6 +78,10 @@ export default function MLMathDrill() {
     setProofRevealed(true);
   };
 
+  const goToMath = () => {
+    setStep("math");
+  };
+
   const goToProof = () => {
     setStep("proof");
   };
@@ -62,14 +89,12 @@ export default function MLMathDrill() {
   const goToApplication = () => {
     const mathOk = mathAnswer === question.math_question.correct;
     const proofOk = proofAnswer === question.proof_question.correct;
-    // Update stats when finishing proof step
     setStats((prev) => ({
       total: prev.total + 1,
       mathCorrect: prev.mathCorrect + (mathOk ? 1 : 0),
       proofCorrect: prev.proofCorrect + (proofOk ? 1 : 0),
     }));
     setStep("application");
-    // Save to quiz history
     fetch("/api/quiz-history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -89,7 +114,7 @@ export default function MLMathDrill() {
     <div>
       <h2 className="text-2xl font-bold text-white mb-2">ML Math Drill</h2>
       <p className="text-gray-400 mb-6 text-sm">
-        Math → Proof → ML Application. Infinite drill loop.
+        Learn → Math → Proof → ML Application. Infinite drill loop.
       </p>
 
       {/* Topic selector */}
@@ -172,6 +197,24 @@ export default function MLMathDrill() {
             </span>
           )}
 
+          {/* STEP 0: Learn */}
+          {step === "learn" && question.concept_explanation && (
+            <LearnStep concept={question.concept_explanation} onNext={goToMath} />
+          )}
+
+          {/* STEP 0 fallback: skip Learn if no concept_explanation */}
+          {step === "learn" && !question.concept_explanation && (
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-4">
+              <p className="text-sm text-gray-400">No concept explanation available for this question.</p>
+              <button
+                onClick={goToMath}
+                className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-500 transition-colors"
+              >
+                Skip to Math Question →
+              </button>
+            </div>
+          )}
+
           {/* STEP 1: Math Question */}
           {step === "math" && question.math_question && (
             <MathStep
@@ -206,13 +249,70 @@ export default function MLMathDrill() {
   );
 }
 
+/* ─── Learn Step ─────────────────────────────────────── */
+
+function LearnStep({ concept, onNext }) {
+  return (
+    <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-5">
+      <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wide">
+        Concept Explanation
+      </h3>
+
+      {/* Core concept */}
+      <div className="space-y-1">
+        <span className="text-xs text-gray-400 uppercase font-medium">What is it?</span>
+        <div className="bg-gray-900/60 rounded-lg p-4 border border-gray-700/50">
+          <MathText className="text-gray-200">{concept.concept}</MathText>
+        </div>
+      </div>
+
+      {/* Analogy */}
+      {concept.analogy && (
+        <div className="space-y-1">
+          <span className="text-xs text-gray-400 uppercase font-medium">Intuition / Analogy</span>
+          <div className="bg-amber-900/15 rounded-lg p-4 border border-amber-700/30">
+            <MathText className="text-amber-200/90">{concept.analogy}</MathText>
+          </div>
+        </div>
+      )}
+
+      {/* Simple example */}
+      {concept.simple_example && (
+        <div className="space-y-1">
+          <span className="text-xs text-emerald-400 uppercase font-medium">Simple Example</span>
+          <div className="bg-emerald-900/15 rounded-lg p-4 border border-emerald-700/30">
+            <MathText className="text-gray-200">{concept.simple_example}</MathText>
+          </div>
+        </div>
+      )}
+
+      {/* Harder example */}
+      {concept.harder_example && (
+        <div className="space-y-1">
+          <span className="text-xs text-orange-400 uppercase font-medium">Harder Example</span>
+          <div className="bg-orange-900/15 rounded-lg p-4 border border-orange-700/30">
+            <MathText className="text-gray-200">{concept.harder_example}</MathText>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={onNext}
+        className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-500 transition-colors"
+      >
+        Ready — Show Me the Question →
+      </button>
+    </div>
+  );
+}
+
 /* ─── Math Step ──────────────────────────────────────── */
 
 function MathStep({ q, answer, revealed, onSelect, onCheck, onNext }) {
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-4">
       <h3 className="text-sm font-semibold text-violet-400 uppercase tracking-wide">Math Problem</h3>
-      <p className="text-sm text-white whitespace-pre-wrap">{q.question}</p>
+      <MathText>{q.question}</MathText>
 
       <MCOptions
         options={q.options}
@@ -239,7 +339,11 @@ function MathStep({ q, answer, revealed, onSelect, onCheck, onNext }) {
               : "bg-red-900/20 text-red-400 border border-red-700/50"
           }`}>
             <span className="font-medium">{answer === q.correct ? "Correct!" : "Incorrect."}</span>
-            {q.solution && <p className="mt-2 whitespace-pre-wrap">{q.solution}</p>}
+            {q.solution && (
+              <div className="mt-2">
+                <MathText>{q.solution}</MathText>
+              </div>
+            )}
           </div>
           <button
             onClick={onNext}
@@ -259,12 +363,12 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext }) {
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-4">
       <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wide">Proof Insertion</h3>
-      <p className="text-sm text-white">{q.question}</p>
+      <MathText>{q.question}</MathText>
 
       {/* Proof context with missing step */}
       {q.context && (
-        <div className="bg-gray-900 rounded-lg p-4 text-sm text-gray-300 font-mono whitespace-pre-wrap leading-relaxed">
-          {q.context}
+        <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+          <MathText>{q.context}</MathText>
         </div>
       )}
 
@@ -293,7 +397,11 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext }) {
               : "bg-red-900/20 text-red-400 border border-red-700/50"
           }`}>
             <span className="font-medium">{answer === q.correct ? "Correct!" : "Incorrect."}</span>
-            {q.explanation && <p className="mt-2 whitespace-pre-wrap">{q.explanation}</p>}
+            {q.explanation && (
+              <div className="mt-2">
+                <MathText>{q.explanation}</MathText>
+              </div>
+            )}
           </div>
           <button
             onClick={onNext}
@@ -322,7 +430,7 @@ function ApplicationStep({ app }) {
 
         <div>
           <span className="text-xs text-gray-400 uppercase">How this math is used</span>
-          <p className="text-sm text-gray-200 whitespace-pre-wrap">{app.explanation}</p>
+          <MathText>{app.explanation}</MathText>
         </div>
 
         {app.related_algorithms && app.related_algorithms.length > 0 && (
@@ -373,7 +481,7 @@ function MCOptions({ options, correct, answer, revealed, onSelect }) {
             disabled={revealed}
             className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors border disabled:cursor-default ${cls}`}
           >
-            {option}
+            <MathText>{option}</MathText>
           </button>
         );
       })}

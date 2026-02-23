@@ -155,8 +155,8 @@ def create_ml_math_agent() -> Agent:
 
 
 def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
-    """Generate a single ML math question bundle with 3 parts:
-    math MC, proof insertion MC, and ML application context.
+    """Generate a single ML math question bundle with 4 parts:
+    concept explanation, math MC, proof insertion MC, and ML application context.
     """
     scope = (
         "any ML-related math topic (linear algebra, probability, calculus, optimization, information theory)"
@@ -167,10 +167,27 @@ def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
     task = Task(
         description=(
             f"Generate ONE math question bundle about {scope} for an MLE.\n\n"
-            "The bundle has 3 parts:\n\n"
+            "IMPORTANT FORMATTING RULES:\n"
+            "- Use LaTeX notation for ALL math expressions: wrap inline math in $...$ "
+            "and display/block math in $$...$$.\n"
+            "- Examples: $\\nabla f(x)$, $\\mathbf{A}^T\\mathbf{A}$, "
+            "$$\\frac{\\partial L}{\\partial w} = \\frac{1}{n}\\sum_{i=1}^n ...$$\n"
+            "- Use LaTeX for matrices, summations, integrals, fractions, greek letters, etc.\n"
+            "- Never use plaintext math like sqrt(x) or a^T*b. Always use LaTeX.\n\n"
+            "The bundle has 4 parts:\n\n"
+            "PART 0 - CONCEPT EXPLANATION (teach first!):\n"
+            "Before any questions, teach the concept thoroughly:\n"
+            "a) concept: A clear 3-5 sentence explanation of the core math concept. "
+            "Define what it is, why it matters, and the key formula/theorem.\n"
+            "b) analogy: A real-world analogy that makes the concept intuitive "
+            "(e.g., eigenvalues are like the natural axes a shape wants to stretch along).\n"
+            "c) simple_example: A fully worked easy example with step-by-step solution. "
+            "Use small numbers. Show every step.\n"
+            "d) harder_example: A more challenging worked example that builds on the simple one. "
+            "Still show every step but introduce a twist or higher dimension.\n\n"
             "PART 1 - MATH QUESTION (computation):\n"
             "A concrete math problem requiring calculation. 4 options, one correct.\n"
-            "Include the full worked solution.\n\n"
+            "Include the full worked solution. Difficulty should be between the simple and harder examples.\n\n"
             "PART 2 - PROOF INSERTION:\n"
             "A proof or derivation relevant to the same topic with ONE step replaced by '___'.\n"
             "Show the full proof context (numbered steps). 4 options for the missing step.\n"
@@ -182,6 +199,12 @@ def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
             "Respond with ONLY valid JSON:\n"
             "{\n"
             '  "topic": "short topic name",\n'
+            '  "concept_explanation": {\n'
+            '    "concept": "Clear explanation of the concept with LaTeX math...",\n'
+            '    "analogy": "Real-world analogy to build intuition...",\n'
+            '    "simple_example": "Step 1: ...\\nStep 2: ...\\nAnswer: ...",\n'
+            '    "harder_example": "Step 1: ...\\nStep 2: ...\\nAnswer: ..."\n'
+            "  },\n"
             '  "math_question": {\n'
             '    "question": "Compute ...",\n'
             '    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],\n'
@@ -202,7 +225,7 @@ def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
             "  }\n"
             "}"
         ),
-        expected_output="Valid JSON with math_question, proof_question, and ml_application.",
+        expected_output="Valid JSON with concept_explanation, math_question, proof_question, and ml_application.",
         agent=agent,
     )
     result = str(agent.execute_task(task))

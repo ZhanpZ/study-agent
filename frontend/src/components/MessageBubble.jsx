@@ -1,5 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 const AGENT_STYLES = {
   professor: {
@@ -57,7 +59,7 @@ export default function MessageBubble({ agent, content }) {
                           prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
                           prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
                           prose-strong:text-gray-100 prose-a:text-indigo-400">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
           </div>
         )}
       </div>
