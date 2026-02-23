@@ -1,4 +1,23 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+
+function usePersistedState(key, defaultValue) {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      return stored ? JSON.parse(stored) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+  const setAndPersist = useCallback((updater) => {
+    setValue((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      sessionStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  }, [key]);
+  return [value, setAndPersist];
+}
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
@@ -39,15 +58,15 @@ function MathText({ children, className = "" }) {
 }
 
 export default function MLMathDrill() {
-  const [topic, setTopic] = useState("all");
-  const [question, setQuestion] = useState(null);
+  const [topic, setTopic] = usePersistedState("mlMath_topic", "all");
+  const [question, setQuestion] = usePersistedState("mlMath_question", null);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState("learn"); // learn → math → proof → application
-  const [mathAnswer, setMathAnswer] = useState(null);
-  const [mathRevealed, setMathRevealed] = useState(false);
-  const [proofAnswer, setProofAnswer] = useState(null);
-  const [proofRevealed, setProofRevealed] = useState(false);
-  const [stats, setStats] = useState({ total: 0, mathCorrect: 0, proofCorrect: 0 });
+  const [step, setStep] = usePersistedState("mlMath_step", "learn");
+  const [mathAnswer, setMathAnswer] = usePersistedState("mlMath_mathAnswer", null);
+  const [mathRevealed, setMathRevealed] = usePersistedState("mlMath_mathRevealed", false);
+  const [proofAnswer, setProofAnswer] = usePersistedState("mlMath_proofAnswer", null);
+  const [proofRevealed, setProofRevealed] = usePersistedState("mlMath_proofRevealed", false);
+  const [stats, setStats] = usePersistedState("mlMath_stats", { total: 0, mathCorrect: 0, proofCorrect: 0 });
 
   const fetchQuestion = async () => {
     setLoading(true);

@@ -244,9 +244,60 @@ async def save_quiz_history(body: dict, db: AsyncSession = Depends(get_db)):
     return {"id": entry.id, "status": "saved"}
 
 
+@app.delete("/api/quiz-history/{entry_id}")
+async def delete_quiz_history(entry_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a single quiz history entry."""
+    entry = await db.get(QuizHistory, entry_id)
+    if not entry:
+        return {"error": "Entry not found"}
+    await db.delete(entry)
+    await db.commit()
+    return {"status": "deleted", "id": entry_id}
+
+
+@app.delete("/api/concepts/{concept_id}")
+async def delete_concept(concept_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a concept and all its associated data (skills, reviews, sessions, messages)."""
+    concept = await db.get(Concept, concept_id)
+    if not concept:
+        return {"error": "Concept not found"}
+
+    # Delete associated sessions and their messages
+    sessions_result = await db.execute(
+        select(Session).where(Session.concept_id == concept_id)
+    )
+    for session in sessions_result.scalars().all():
+        msg_result = await db.execute(
+            select(Message).where(Message.session_id == session.id)
+        )
+        for msg in msg_result.scalars().all():
+            await db.delete(msg)
+        await db.delete(session)
+
+    # Delete skill score
+    skill_result = await db.execute(
+        select(SkillScore).where(SkillScore.concept_id == concept_id)
+    )
+    skill = skill_result.scalar_one_or_none()
+    if skill:
+        await db.delete(skill)
+
+    # Delete review schedule
+    review_result = await db.execute(
+        select(ReviewSchedule).where(ReviewSchedule.concept_id == concept_id)
+    )
+    review = review_result.scalar_one_or_none()
+    if review:
+        await db.delete(review)
+
+    await db.delete(concept)
+    await db.commit()
+    return {"status": "deleted", "id": concept_id}
+
+
 @app.get("/api/quiz-history")
 async def get_quiz_history(
-    quiz_type: str | None = None, limit: int = 20,
+    quiz_type: str | None = None, limit: int = 10000,
     db: AsyncSession = Depends(get_db),
 ):
     """Get recent quiz history, optionally filtered by type."""

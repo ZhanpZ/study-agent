@@ -1,5 +1,18 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 
+function loadSessionState(key, fallback) {
+  try {
+    const stored = sessionStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistSessionState(key, value) {
+  sessionStorage.setItem(key, JSON.stringify(value));
+}
+
 export default function useWebSocket(sessionId, initialMessages = []) {
   const wsRef = useRef(null);
   const [messages, setMessages] = useState(initialMessages);
@@ -7,10 +20,10 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const [score, setScore] = useState(null);
   const [gaps, setGaps] = useState([]);
   const [connected, setConnected] = useState(false);
-  const [mcqQuestions, setMcqQuestions] = useState(null);
-  const [codeChallenge, setCodeChallenge] = useState(null);
-  const [summary, setSummary] = useState(null);
-  const [comprehensionMcqs, setComprehensionMcqs] = useState([]);
+  const [mcqQuestions, setMcqQuestions] = useState(() => loadSessionState("ws_mcqQuestions", null));
+  const [codeChallenge, setCodeChallenge] = useState(() => loadSessionState("ws_codeChallenge", null));
+  const [summary, setSummary] = useState(() => loadSessionState("ws_summary", null));
+  const [comprehensionMcqs, setComprehensionMcqs] = useState(() => loadSessionState("ws_comprehensionMcqs", []));
 
   // Sync initialMessages when they arrive from session restore
   useEffect(() => {
@@ -45,6 +58,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
           // Clear comprehension MCQs when leaving explain phases
           if (data.phase !== "explain" && data.phase !== "explain_done") {
             setComprehensionMcqs([]);
+            persistSessionState("ws_comprehensionMcqs", []);
           }
           break;
 
@@ -55,23 +69,32 @@ export default function useWebSocket(sessionId, initialMessages = []) {
 
         case "mcq":
           setMcqQuestions(data.questions);
+          persistSessionState("ws_mcqQuestions", data.questions);
           setPhase("quiz");
           break;
 
-        case "code_challenge":
-          setCodeChallenge({
+        case "code_challenge": {
+          const challenge = {
             problem: data.problem,
             hints: data.hints || [],
-          });
+          };
+          setCodeChallenge(challenge);
+          persistSessionState("ws_codeChallenge", challenge);
           setPhase("evaluate");
           break;
+        }
 
         case "comprehension_mcqs":
-          setComprehensionMcqs((prev) => [...prev, ...data.questions]);
+          setComprehensionMcqs((prev) => {
+            const next = [...prev, ...data.questions];
+            persistSessionState("ws_comprehensionMcqs", next);
+            return next;
+          });
           break;
 
         case "summary":
           setSummary(data.content);
+          persistSessionState("ws_summary", data.content);
           break;
 
         case "error":
@@ -104,6 +127,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "mcq_answers", answers }));
       setMcqQuestions(null);
+      persistSessionState("ws_mcqQuestions", null);
     }
   }, []);
 
@@ -111,6 +135,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "code_answer", code }));
       setCodeChallenge(null);
+      persistSessionState("ws_codeChallenge", null);
     }
   }, []);
 

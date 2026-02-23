@@ -1,169 +1,392 @@
 import { useState, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Link } from "react-router-dom";
 import ConceptDetail from "../components/ConceptDetail";
-
-const QUIZ_TYPE_LABEL = {
-  algorithm: "Algo Selection",
-  constraint: "Constraint Match",
-  ml_math: "ML Math",
-};
-const QUIZ_TYPE_COLOR = {
-  algorithm: "bg-amber-900/40 text-amber-400",
-  constraint: "bg-blue-900/40 text-blue-400",
-  ml_math: "bg-violet-900/40 text-violet-400",
-};
 
 export default function Dashboard() {
   const [skills, setSkills] = useState([]);
   const [stats, setStats] = useState(null);
   const [quizHistory, setQuizHistory] = useState([]);
+  const [reviewsDue, setReviewsDue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedConcept, setSelectedConcept] = useState(null);
-  const [expandedQuiz, setExpandedQuiz] = useState(null);
+
+  const deleteQuizEntry = async (entryId) => {
+    try {
+      const res = await fetch(`/api/quiz-history/${entryId}`, { method: "DELETE" });
+      if (res.ok) {
+        setQuizHistory((prev) => prev.filter((e) => e.id !== entryId));
+      }
+    } catch {}
+  };
+
+  const deleteConcept = async (conceptId) => {
+    try {
+      const res = await fetch(`/api/concepts/${conceptId}`, { method: "DELETE" });
+      if (res.ok) {
+        setSkills((prev) => prev.filter((s) => s.concept_id !== conceptId));
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     Promise.all([
       fetch("/api/dashboard/skills").then((r) => r.json()),
       fetch("/api/dashboard/stats").then((r) => r.json()),
-      fetch("/api/quiz-history?limit=20").then((r) => r.json()),
+      fetch("/api/quiz-history?limit=10000").then((r) => r.json()),
+      fetch("/api/reviews/due").then((r) => r.json()),
     ])
-      .then(([skillsData, statsData, quizData]) => {
+      .then(([skillsData, statsData, quizData, reviewData]) => {
         setSkills(skillsData);
         setStats(statsData);
         setQuizHistory(quizData);
+        setReviewsDue(reviewData);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
   if (loading) {
-    return <div className="text-center text-gray-400 mt-20">Loading dashboard...</div>;
+    return (
+      <div className="text-center text-focus-text-muted mt-20">
+        Loading dashboard...
+      </div>
+    );
   }
 
+  // Derive section-specific data
+  const algoQuizzes = quizHistory.filter(
+    (q) => q.quiz_type === "algorithm" || q.quiz_type === "constraint"
+  );
+  const mlMathQuizzes = quizHistory.filter((q) => q.quiz_type === "ml_math");
+
+  const algoAvg = algoQuizzes.length
+    ? Math.round(
+        algoQuizzes.reduce((s, q) => s + (q.score || 0), 0) / algoQuizzes.length
+      )
+    : null;
+
+  const mlMathStats = deriveMlMathStats(mlMathQuizzes);
+
+  // Recent activity (last 10 across all types)
+  const recentActivity = quizHistory.slice(0, 10);
+
   return (
-    <div>
-      {/* Stats cards */}
+    <div className="space-y-6">
+      {/* Overview Stats Bar */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Sessions" value={stats.total_sessions} />
-          <StatCard label="Concepts" value={stats.total_concepts} />
-          <StatCard label="Mastered" value={stats.concepts_mastered} />
-          <StatCard label="Avg Score" value={`${stats.avg_score}%`} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <OverviewStat
+            label="Study Sessions"
+            value={stats.total_sessions}
+            icon={"\u{1F4D6}"}
+            color="text-focus-teal"
+          />
+          <OverviewStat
+            label="Quiz Avg"
+            value={algoAvg !== null ? `${algoAvg}%` : "--"}
+            icon={"\u{1F9E9}"}
+            color="text-focus-amber"
+          />
+          <OverviewStat
+            label="Math Drills"
+            value={mlMathQuizzes.length}
+            icon={"\u{1F4D0}"}
+            color="text-violet-400"
+          />
+          <OverviewStat
+            label="Reviews Due"
+            value={reviewsDue.length}
+            icon={"\u{1F504}"}
+            color={reviewsDue.length > 0 ? "text-focus-amber" : "text-focus-teal"}
+          />
         </div>
       )}
 
-      {/* Skills list */}
-      <h2 className="text-xl font-bold text-white mb-4">Concept Skills</h2>
-      {skills.length === 0 ? (
-        <p className="text-gray-400">
-          No concepts studied yet. Start a session on the Study page!
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {skills.map((skill) => (
-            <button
-              key={skill.concept_id}
-              onClick={() => setSelectedConcept(skill)}
-              className="w-full text-left bg-gray-800/60 border border-gray-700 rounded-lg p-4
-                         hover:border-gray-500 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-white font-medium">{skill.concept_name}</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Click for notes</span>
-                  <span className="text-sm font-bold text-white">
-                    {Math.round(skill.score)}/100
-                  </span>
-                </div>
+      {/* 4 Section Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Study Section */}
+        <SectionCard
+          title="Study Progress"
+          icon={"\u{1F4D6}"}
+          accentColor="focus-teal"
+          linkTo="/"
+          linkLabel="Start studying"
+        >
+          {skills.length === 0 ? (
+            <EmptyState text="No concepts studied yet" />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-focus-text-muted">
+                <span>{skills.length} concepts tracked</span>
+                <span>
+                  {skills.filter((s) => s.score >= 80).length} mastered
+                </span>
               </div>
-              <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    skill.score >= 80
-                      ? "bg-green-500"
-                      : skill.score >= 50
-                      ? "bg-yellow-500"
-                      : "bg-red-500"
-                  }`}
-                  style={{ width: `${skill.score}%` }}
+              {skills.slice(0, 5).map((skill) => (
+                <div key={skill.concept_id} className="group flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedConcept(skill)}
+                    className="flex-1 text-left"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-focus-text group-hover:text-focus-teal transition-colors truncate mr-2">
+                        {skill.concept_name}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-focus-text-muted">
+                        {Math.round(skill.score)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-focus-border rounded-full h-1.5">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${
+                          skill.score >= 80
+                            ? "bg-focus-teal"
+                            : skill.score >= 50
+                            ? "bg-focus-amber"
+                            : "bg-red-400"
+                        }`}
+                        style={{ width: `${skill.score}%` }}
+                      />
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete "${skill.concept_name}" and all its data?`)) {
+                        deleteConcept(skill.concept_id);
+                      }
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all p-1 shrink-0"
+                    title="Delete concept"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {skills.length > 5 && (
+                <p className="text-xs text-focus-text-dim text-center">
+                  +{skills.length - 5} more concepts
+                </p>
+              )}
+              {/* Top gaps */}
+              {(() => {
+                const allGaps = skills.flatMap((s) => s.misconceptions || []);
+                const uniqueGaps = [...new Set(allGaps)].slice(0, 3);
+                return uniqueGaps.length > 0 ? (
+                  <div className="pt-2 border-t border-focus-border">
+                    <p className="text-xs text-focus-text-dim mb-1">
+                      Top gaps to address
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {uniqueGaps.map((gap, i) => (
+                        <span
+                          key={i}
+                          className="text-xs px-2 py-0.5 bg-red-900/20 text-red-300 rounded"
+                        >
+                          {gap}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Algo Quiz Section */}
+        <SectionCard
+          title="Algorithm Quizzes"
+          icon={"\u{1F9E9}"}
+          accentColor="focus-amber"
+          linkTo="/algorithm-quiz"
+          linkLabel="Take a quiz"
+        >
+          {algoQuizzes.length === 0 ? (
+            <EmptyState text="No quizzes taken yet" />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-focus-text-muted">
+                <span>{algoQuizzes.length} quizzes completed</span>
+                {algoAvg !== null && <span>Avg: {algoAvg}%</span>}
+              </div>
+              {/* Mini score bars for last 5 */}
+              <div className="flex items-end gap-1 h-16">
+                {algoQuizzes.slice(0, 8).reverse().map((q, i) => {
+                  const score = q.score || 0;
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col items-center gap-0.5"
+                    >
+                      <div
+                        className={`w-full rounded-t transition-all ${
+                          score >= 80
+                            ? "bg-focus-teal"
+                            : score >= 50
+                            ? "bg-focus-amber"
+                            : "bg-red-400"
+                        }`}
+                        style={{ height: `${Math.max(score * 0.6, 4)}px` }}
+                      />
+                      <span className="text-[9px] text-focus-text-dim">
+                        {Math.round(score)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Topic breakdown */}
+              {(() => {
+                const topics = {};
+                algoQuizzes.forEach((q) => {
+                  const t = q.topic || "all";
+                  topics[t] = (topics[t] || 0) + 1;
+                });
+                const sorted = Object.entries(topics)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 4);
+                return (
+                  <div className="pt-2 border-t border-focus-border">
+                    <p className="text-xs text-focus-text-dim mb-1">
+                      Topics practiced
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {sorted.map(([topic, count]) => (
+                        <span
+                          key={topic}
+                          className="text-xs px-2 py-0.5 bg-focus-amber-dim/30 text-focus-amber-light rounded"
+                        >
+                          {topic} ({count})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ML Math Section */}
+        <SectionCard
+          title="ML Math Drills"
+          icon={"\u{1F4D0}"}
+          accentColor="violet"
+          linkTo="/ml-math"
+          linkLabel="Practice math"
+        >
+          {mlMathQuizzes.length === 0 ? (
+            <EmptyState text="No drills completed yet" />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-focus-text-muted">
+                <span>{mlMathQuizzes.length} drills completed</span>
+              </div>
+              {/* Math & Proof accuracy */}
+              <div className="grid grid-cols-2 gap-3">
+                <MiniGauge
+                  label="Math"
+                  value={mlMathStats.mathPct}
+                  color="text-violet-400"
+                  bgColor="bg-violet-400"
+                />
+                <MiniGauge
+                  label="Proof"
+                  value={mlMathStats.proofPct}
+                  color="text-blue-400"
+                  bgColor="bg-blue-400"
                 />
               </div>
-              {skill.misconceptions.length > 0 && (
-                <div className="text-xs text-gray-400">
-                  Gaps: {skill.misconceptions.slice(0, 3).join(", ")}
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Quiz History */}
-      <h2 className="text-xl font-bold text-white mb-4 mt-10">Quiz History</h2>
-      {quizHistory.length === 0 ? (
-        <p className="text-gray-400">
-          No quizzes taken yet. Try the Algo Quiz or ML Math pages!
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {quizHistory.map((entry) => (
-            <div key={entry.id}>
-              <button
-                onClick={() => setExpandedQuiz(expandedQuiz === entry.id ? null : entry.id)}
-                className={`w-full text-left bg-gray-800/60 border rounded-lg p-3 transition-colors ${
-                  expandedQuiz === entry.id
-                    ? "border-indigo-500"
-                    : "border-gray-700 hover:border-gray-500"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      QUIZ_TYPE_COLOR[entry.quiz_type] || "bg-gray-700 text-gray-400"
-                    }`}>
-                      {QUIZ_TYPE_LABEL[entry.quiz_type] || entry.quiz_type}
-                    </span>
-                    {entry.topic !== "all" && (
-                      <span className="text-xs text-gray-500">{entry.topic}</span>
-                    )}
-                    {entry.score !== null && (
-                      <span className={`text-xs font-bold ${
-                        entry.score >= 80 ? "text-green-400"
-                          : entry.score >= 50 ? "text-yellow-400"
-                          : "text-red-400"
-                      }`}>
-                        {Math.round(entry.score)}%
+              {/* Topics practiced */}
+              {mlMathStats.topics.length > 0 && (
+                <div className="pt-2 border-t border-focus-border">
+                  <p className="text-xs text-focus-text-dim mb-1">
+                    Topics covered
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {mlMathStats.topics.slice(0, 4).map((t) => (
+                      <span
+                        key={t}
+                        className="text-xs px-2 py-0.5 bg-violet-900/30 text-violet-300 rounded"
+                      >
+                        {t}
                       </span>
-                    )}
+                    ))}
                   </div>
-                  <span className="text-xs text-gray-500">
-                    {entry.created_at ? new Date(entry.created_at).toLocaleDateString() : "---"}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {entry.questions?.length || 0} question{(entry.questions?.length || 0) !== 1 ? "s" : ""}
-                  {" · "}
-                  {expandedQuiz === entry.id ? "Click to collapse" : "Click to review"}
-                </p>
-              </button>
-
-              {/* Expanded quiz questions */}
-              {expandedQuiz === entry.id && (
-                <div className="mt-2 bg-gray-800/40 border border-gray-700 rounded-lg p-4 space-y-4">
-                  {entry.quiz_type === "ml_math" ? (
-                    <MLMathReview entry={entry} />
-                  ) : entry.quiz_type === "constraint" ? (
-                    <ConstraintReview entry={entry} />
-                  ) : (
-                    <AlgorithmReview entry={entry} />
-                  )}
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </SectionCard>
+
+        {/* Review Section */}
+        <SectionCard
+          title="Spaced Review"
+          icon={"\u{1F504}"}
+          accentColor="focus-teal"
+          linkTo="/review"
+          linkLabel="Review now"
+        >
+          {reviewsDue.length === 0 && skills.length === 0 ? (
+            <EmptyState text="Study some concepts first" />
+          ) : reviewsDue.length === 0 ? (
+            <div className="text-center py-4">
+              <div className="text-3xl mb-2">{"\u{2705}"}</div>
+              <p className="text-sm text-focus-teal">All caught up!</p>
+              <p className="text-xs text-focus-text-dim mt-1">
+                No reviews due right now
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-focus-amber">
+                  {reviewsDue.length}
+                </span>
+                <span className="text-xs text-focus-text-muted">due today</span>
+              </div>
+              {reviewsDue.slice(0, 4).map((r) => (
+                <div
+                  key={r.concept_id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span className="text-focus-text truncate mr-2">
+                    {r.concept_name}
+                  </span>
+                  <span className="text-xs text-focus-text-dim whitespace-nowrap">
+                    Rep #{r.repetitions} &middot;{" "}
+                    {Math.round(r.interval_days)}d interval
+                  </span>
+                </div>
+              ))}
+              {reviewsDue.length > 4 && (
+                <p className="text-xs text-focus-text-dim text-center">
+                  +{reviewsDue.length - 4} more due
+                </p>
+              )}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Recent Activity Feed */}
+      <div className="bg-focus-surface border border-focus-border rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-focus-text mb-4">
+          Recent Activity
+        </h3>
+        {recentActivity.length === 0 ? (
+          <p className="text-sm text-focus-text-dim">No activity yet</p>
+        ) : (
+          <div className="space-y-2">
+            {recentActivity.map((entry) => (
+              <ActivityRow key={entry.id} entry={entry} onDelete={deleteQuizEntry} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Concept detail modal */}
       {selectedConcept && (
@@ -178,121 +401,150 @@ export default function Dashboard() {
   );
 }
 
-/* ─── Quiz Review Components ─────────────────────────── */
+/* ─── Helper Components ──────────────────────────────── */
 
-function AlgorithmReview({ entry }) {
-  return entry.questions.map((q, i) => {
-    const userAnswer = entry.answers?.[i];
-    const isCorrect = userAnswer === q.correct;
-    return (
-      <div key={i} className="text-sm space-y-1">
-        <p className="text-white font-medium">{i + 1}. {q.problem}</p>
-        {q.constraints && <p className="text-xs text-gray-500">Constraints: {q.constraints}</p>}
-        <div className="flex gap-2 text-xs">
-          <span className={isCorrect ? "text-green-400" : "text-red-400"}>
-            Your answer: {userAnswer || "—"}
+function OverviewStat({ label, value, icon, color }) {
+  return (
+    <div className="bg-focus-surface border border-focus-border rounded-xl p-4 text-center">
+      <div className="text-lg mb-1">{icon}</div>
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      <div className="text-xs text-focus-text-dim mt-1">{label}</div>
+    </div>
+  );
+}
+
+function SectionCard({ title, icon, accentColor, linkTo, linkLabel, children }) {
+  return (
+    <div className="bg-focus-surface border border-focus-border rounded-xl p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-focus-text flex items-center gap-2">
+          <span>{icon}</span>
+          {title}
+        </h3>
+        <Link
+          to={linkTo}
+          className={`text-xs text-focus-text-dim hover:text-${accentColor} transition-colors`}
+        >
+          {linkLabel} &rarr;
+        </Link>
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div className="text-center py-6">
+      <p className="text-sm text-focus-text-dim">{text}</p>
+    </div>
+  );
+}
+
+function MiniGauge({ label, value, color, bgColor }) {
+  return (
+    <div className="text-center">
+      <div className={`text-xl font-bold ${color}`}>
+        {value !== null ? `${value}%` : "--"}
+      </div>
+      <div className="w-full bg-focus-border rounded-full h-1 mt-1">
+        <div
+          className={`h-1 rounded-full transition-all ${bgColor}`}
+          style={{ width: `${value || 0}%` }}
+        />
+      </div>
+      <div className="text-xs text-focus-text-dim mt-1">{label}</div>
+    </div>
+  );
+}
+
+const ACTIVITY_TYPE = {
+  algorithm: { label: "Algo Quiz", color: "bg-focus-amber-dim/40 text-focus-amber" },
+  constraint: { label: "Constraint Quiz", color: "bg-blue-900/40 text-blue-400" },
+  ml_math: { label: "ML Math", color: "bg-violet-900/40 text-violet-400" },
+};
+
+function ActivityRow({ entry, onDelete }) {
+  const type = ACTIVITY_TYPE[entry.quiz_type] || {
+    label: entry.quiz_type,
+    color: "bg-focus-border text-focus-text-dim",
+  };
+  const score = entry.score;
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-focus-border/50 last:border-0 group">
+      <div className="flex items-center gap-2">
+        <span
+          className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${type.color}`}
+        >
+          {type.label}
+        </span>
+        {entry.topic && entry.topic !== "all" && (
+          <span className="text-xs text-focus-text-dim">{entry.topic}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        {score !== null && (
+          <span
+            className={`text-xs font-bold ${
+              score >= 80
+                ? "text-focus-teal"
+                : score >= 50
+                ? "text-focus-amber"
+                : "text-red-400"
+            }`}
+          >
+            {Math.round(score)}%
           </span>
-          {!isCorrect && <span className="text-gray-400">Correct: {q.correct}</span>}
-        </div>
-        {q.explanation && <p className="text-xs text-gray-500">{q.explanation}</p>}
+        )}
+        <span className="text-[10px] text-focus-text-dim">
+          {entry.created_at
+            ? new Date(entry.created_at).toLocaleDateString()
+            : "---"}
+        </span>
+        {onDelete && (
+          <button
+            onClick={() => onDelete(entry.id)}
+            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all p-0.5"
+            title="Delete entry"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        )}
       </div>
-    );
-  });
-}
-
-function ConstraintReview({ entry }) {
-  return entry.questions.map((q, i) => {
-    const userPicks = entry.answers?.[i] || [];
-    const correctSet = new Set(q.correct);
-    return (
-      <div key={i} className="text-sm space-y-1">
-        <div className="flex flex-wrap gap-1.5 mb-1">
-          {q.keywords?.map((kw, j) => (
-            <span key={j} className="px-2 py-0.5 bg-amber-600/20 border border-amber-600/40 rounded text-xs text-amber-300">
-              {kw}
-            </span>
-          ))}
-        </div>
-        <p className="text-xs text-gray-400 font-mono">{q.constraints}</p>
-        <div className="text-xs space-y-0.5 mt-1">
-          {q.options.map((opt, j) => {
-            const letter = opt.charAt(0);
-            const picked = userPicks.includes(letter);
-            const correct = correctSet.has(letter);
-            return (
-              <div key={j} className={
-                correct && picked ? "text-green-400"
-                  : correct && !picked ? "text-yellow-400"
-                  : !correct && picked ? "text-red-400"
-                  : "text-gray-600"
-              }>
-                {picked ? "✓" : "·"} {opt} {correct ? "(correct)" : ""}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  });
-}
-
-function MLMathReview({ entry }) {
-  const q = entry.questions?.[0];
-  if (!q) return <p className="text-sm text-gray-500">No data.</p>;
-  const userMath = entry.answers?.math;
-  const userProof = entry.answers?.proof;
-  return (
-    <div className="space-y-3 text-sm">
-      {q.math_question && (
-        <div>
-          <p className="text-violet-400 text-xs font-semibold uppercase mb-1">Math</p>
-          <p className="text-white">{q.math_question.question}</p>
-          <div className="flex gap-2 text-xs mt-1">
-            <span className={userMath === q.math_question.correct ? "text-green-400" : "text-red-400"}>
-              Your answer: {userMath || "—"}
-            </span>
-            {userMath !== q.math_question.correct && (
-              <span className="text-gray-400">Correct: {q.math_question.correct}</span>
-            )}
-          </div>
-          {q.math_question.solution && (
-            <p className="text-xs text-gray-500 mt-1">{q.math_question.solution}</p>
-          )}
-        </div>
-      )}
-      {q.proof_question && (
-        <div>
-          <p className="text-blue-400 text-xs font-semibold uppercase mb-1">Proof</p>
-          <p className="text-white">{q.proof_question.question}</p>
-          <div className="flex gap-2 text-xs mt-1">
-            <span className={userProof === q.proof_question.correct ? "text-green-400" : "text-red-400"}>
-              Your answer: {userProof || "—"}
-            </span>
-            {userProof !== q.proof_question.correct && (
-              <span className="text-gray-400">Correct: {q.proof_question.correct}</span>
-            )}
-          </div>
-          {q.proof_question.explanation && (
-            <p className="text-xs text-gray-500 mt-1">{q.proof_question.explanation}</p>
-          )}
-        </div>
-      )}
-      {q.ml_application && (
-        <div>
-          <p className="text-emerald-400 text-xs font-semibold uppercase mb-1">ML Application</p>
-          <p className="text-white font-medium">{q.ml_application.algorithm}</p>
-          <p className="text-xs text-gray-400">{q.ml_application.explanation}</p>
-        </div>
-      )}
     </div>
   );
 }
 
-function StatCard({ label, value }) {
-  return (
-    <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 text-center">
-      <div className="text-2xl font-bold text-white">{value}</div>
-      <div className="text-xs text-gray-400 mt-1">{label}</div>
-    </div>
-  );
+/* ─── Data Helpers ──────────────────────────────────── */
+
+function deriveMlMathStats(quizzes) {
+  let mathCorrect = 0,
+    mathTotal = 0,
+    proofCorrect = 0,
+    proofTotal = 0;
+  const topicSet = new Set();
+
+  quizzes.forEach((q) => {
+    const question = q.questions?.[0];
+    if (!question) return;
+
+    if (question.topic) topicSet.add(question.topic);
+
+    if (question.math_question) {
+      mathTotal++;
+      if (q.answers?.math === question.math_question.correct) mathCorrect++;
+    }
+    if (question.proof_question) {
+      proofTotal++;
+      if (q.answers?.proof === question.proof_question.correct) proofCorrect++;
+    }
+  });
+
+  return {
+    mathPct: mathTotal ? Math.round((mathCorrect / mathTotal) * 100) : null,
+    proofPct: proofTotal ? Math.round((proofCorrect / proofTotal) * 100) : null,
+    topics: [...topicSet],
+  };
 }

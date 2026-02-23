@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 function saveQuizHistory(quiz_type, topic, questions, answers, score) {
   fetch("/api/quiz-history", {
@@ -6,6 +6,25 @@ function saveQuizHistory(quiz_type, topic, questions, answers, score) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ quiz_type, topic, questions, answers, score }),
   }).catch(() => {});
+}
+
+function usePersistedState(key, defaultValue) {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      return stored ? JSON.parse(stored) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+  const setAndPersist = useCallback((updater) => {
+    setValue((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      sessionStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  }, [key]);
+  return [value, setAndPersist];
 }
 
 const TABS = [
@@ -29,7 +48,7 @@ const TOPICS = [
 ];
 
 export default function AlgorithmQuiz() {
-  const [activeTab, setActiveTab] = useState("algorithm");
+  const [activeTab, setActiveTab] = usePersistedState("algoQuiz_activeTab", "algorithm");
 
   return (
     <div>
@@ -60,11 +79,11 @@ export default function AlgorithmQuiz() {
 /* ─── Algorithm Selection Tab ─────────────────────────────── */
 
 function AlgorithmTab() {
-  const [topic, setTopic] = useState("all");
-  const [questions, setQuestions] = useState(null);
+  const [topic, setTopic] = usePersistedState("algoQuiz_topic", "all");
+  const [questions, setQuestions] = usePersistedState("algoQuiz_questions", null);
   const [loading, setLoading] = useState(false);
-  const [answers, setAnswers] = useState({});
-  const [revealed, setRevealed] = useState({});
+  const [answers, setAnswers] = usePersistedState("algoQuiz_answers", {});
+  const [revealed, setRevealed] = usePersistedState("algoQuiz_revealed", {});
 
   const generateQuiz = async () => {
     setLoading(true);
@@ -173,26 +192,54 @@ function AlgorithmTab() {
 /* ─── Constraint Matching Tab ─────────────────────────────── */
 
 const COMPLEXITY_REFERENCE = [
-  { constraint: "n ≤ 10", complexity: "O(n!), O(2ⁿ·n)", examples: "Permutations, brute-force" },
-  { constraint: "n ≤ 20", complexity: "O(2ⁿ)", examples: "Bitmask DP, subset enumeration" },
-  { constraint: "n ≤ 100", complexity: "O(n³)", examples: "Floyd-Warshall, cubic DP" },
-  { constraint: "n ≤ 1,000", complexity: "O(n²)", examples: "Quadratic DP, nested loops" },
-  { constraint: "n ≤ 10⁵", complexity: "O(n log n)", examples: "Sorting, segment trees" },
-  { constraint: "n ≤ 10⁶", complexity: "O(n)", examples: "Two pointers, sliding window" },
-  { constraint: "n ≤ 10⁸", complexity: "O(log n), O(1)", examples: "Binary search, math" },
+  { constraint: "n ≤ 10", complexity: "O(n!), O(2ⁿ·n)", algorithms: "Brute-force permutations, backtracking (all subsets), TSP brute-force, N-Queens" },
+  { constraint: "n ≤ 15–20", complexity: "O(2ⁿ), O(2ⁿ·n)", algorithms: "Bitmask DP, subset enumeration, meet-in-the-middle, subset-sum DP" },
+  { constraint: "n ≤ 50", complexity: "O(n⁴), O(2^(n/2))", algorithms: "Meet-in-the-middle, higher-order DP, matrix DP" },
+  { constraint: "n ≤ 100", complexity: "O(n³)", algorithms: "Floyd-Warshall, matrix chain multiplication, interval DP, Gaussian elimination, network flow (small)" },
+  { constraint: "n ≤ 500", complexity: "O(n³) tight", algorithms: "Hungarian algorithm, DP on intervals, Bellman-Ford (dense), LCS brute DP" },
+  { constraint: "n ≤ 1,000", complexity: "O(n²)", algorithms: "Quadratic DP (LIS naive, edit distance), bubble/insertion sort, pairwise comparison, brute BFS/DFS on dense graphs" },
+  { constraint: "n ≤ 5,000", complexity: "O(n²) tight", algorithms: "2D DP (knapsack, LCS), convex hull (n²), Dijkstra (no heap, dense)" },
+  { constraint: "n ≤ 10⁵", complexity: "O(n log n)", algorithms: "Merge/quick sort, binary search, segment tree, BIT/Fenwick, Dijkstra (heap), Kruskal's, monotonic stack, LIS (binary search), sweep line" },
+  { constraint: "n ≤ 5·10⁵", complexity: "O(n log n) tight", algorithms: "Segment tree + lazy propagation, heavy-light decomposition, centroid decomposition, suffix array, persistent data structures" },
+  { constraint: "n ≤ 10⁶", complexity: "O(n)", algorithms: "Two pointers, sliding window, prefix sums, hashing, union-find, topological sort, BFS/DFS, KMP, Rabin-Karp, counting sort, bucket sort, monotonic deque" },
+  { constraint: "n ≤ 10⁷", complexity: "O(n) tight", algorithms: "Sieve of Eratosthenes, linear-time selection, suffix automaton, radix sort" },
+  { constraint: "n ≤ 10⁸+", complexity: "O(log n), O(√n), O(1)", algorithms: "Binary search, math formulas, matrix exponentiation, fast doubling, number theory (GCD, modpow), sqrt decomposition" },
 ];
 
 function ConstraintTab() {
-  const [questions, setQuestions] = useState(null);
+  const [questions, setQuestions] = usePersistedState("constQuiz_questions", null);
   const [loading, setLoading] = useState(false);
-  const [selections, setSelections] = useState({});  // { qIdx: Set of letters }
-  const [revealed, setRevealed] = useState({});
+  // selections stored as { qIdx: [letters] } arrays (Sets aren't JSON-serializable)
+  const [selectionsRaw, setSelectionsRaw] = usePersistedState("constQuiz_selections", {});
+  const [revealed, setRevealed] = usePersistedState("constQuiz_revealed", {});
   const [showRef, setShowRef] = useState(false);
+
+  // Convert stored arrays back to Sets for component use
+  const selections = {};
+  for (const [k, v] of Object.entries(selectionsRaw)) {
+    selections[k] = new Set(v);
+  }
+  const setSelections = (updater) => {
+    setSelectionsRaw((prev) => {
+      // Convert prev arrays to Sets for the updater
+      const prevSets = {};
+      for (const [k, v] of Object.entries(prev)) {
+        prevSets[k] = new Set(v);
+      }
+      const next = typeof updater === "function" ? updater(prevSets) : updater;
+      // Convert Sets back to arrays for storage
+      const out = {};
+      for (const [k, v] of Object.entries(next)) {
+        out[k] = v instanceof Set ? [...v] : v;
+      }
+      return out;
+    });
+  };
 
   const generateQuiz = async () => {
     setLoading(true);
     setQuestions(null);
-    setSelections({});
+    setSelectionsRaw({});
     setRevealed({});
     try {
       const res = await fetch("/api/constraint-quiz?count=5");
@@ -264,35 +311,38 @@ function ConstraintTab() {
       </p>
 
       {/* Reference table toggle */}
-      <button
-        onClick={() => setShowRef(!showRef)}
-        className="text-xs text-amber-400 hover:text-amber-300 mb-4 underline"
-      >
-        {showRef ? "Hide" : "Show"} complexity reference table
-      </button>
+      <div className="mb-6 bg-gray-800/60 border border-gray-700 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setShowRef(!showRef)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+        >
+          <span>Complexity Reference Table</span>
+          <span className={`text-xs text-gray-500 transition-transform ${showRef ? "rotate-180" : ""}`}>▼</span>
+        </button>
 
-      {showRef && (
-        <div className="mb-6 bg-gray-800/60 border border-gray-700 rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-gray-700 text-gray-400">
-                <th className="px-3 py-2 text-left">Constraint</th>
-                <th className="px-3 py-2 text-left">Max Complexity</th>
-                <th className="px-3 py-2 text-left">Examples</th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPLEXITY_REFERENCE.map((row, i) => (
-                <tr key={i} className="border-b border-gray-800 text-gray-300">
-                  <td className="px-3 py-1.5 font-mono text-amber-400">{row.constraint}</td>
-                  <td className="px-3 py-1.5 font-mono">{row.complexity}</td>
-                  <td className="px-3 py-1.5">{row.examples}</td>
+        {showRef && (
+          <div className="border-t border-gray-700">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-700 text-gray-400">
+                  <th className="px-3 py-2 text-left">Constraint</th>
+                  <th className="px-3 py-2 text-left">Max Complexity</th>
+                  <th className="px-3 py-2 text-left">Common Algorithms</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {COMPLEXITY_REFERENCE.map((row, i) => (
+                  <tr key={i} className="border-b border-gray-800 text-gray-300">
+                    <td className="px-3 py-1.5 font-mono text-amber-400 whitespace-nowrap">{row.constraint}</td>
+                    <td className="px-3 py-1.5 font-mono whitespace-nowrap">{row.complexity}</td>
+                    <td className="px-3 py-1.5">{row.algorithms}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <button
         onClick={generateQuiz}
