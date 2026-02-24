@@ -1,25 +1,35 @@
 import json
+import logging
 from crewai import Agent, Task
-from backend.config import MODEL_STRONG
+from backend.config import MODEL_FAST
+
+logger = logging.getLogger(__name__)
+
+
+_quiz_agent: Agent | None = None
 
 
 def create_quiz_agent() -> Agent:
-    return Agent(
-        role="Algorithm Selection Quiz Master",
-        goal=(
-            "Generate algorithm selection quiz questions. "
-            "Create realistic problem descriptions with constraints "
-            "where the user must identify the correct algorithm/approach."
-        ),
-        backstory=(
-            "Expert competitive programmer and tech interviewer. "
-            "You design problems requiring pattern recognition: sliding window, "
-            "two pointers, BFS/DFS, DP, binary search, greedy, union find, etc."
-        ),
-        llm=MODEL_STRONG,
-        verbose=False,
-        allow_delegation=False,
-    )
+    """Return a singleton quiz agent (created once, reused across requests)."""
+    global _quiz_agent
+    if _quiz_agent is None:
+        _quiz_agent = Agent(
+            role="Algorithm Selection Quiz Master",
+            goal=(
+                "Generate algorithm selection quiz questions. "
+                "Create realistic problem descriptions with constraints "
+                "where the user must identify the correct algorithm/approach."
+            ),
+            backstory=(
+                "Expert competitive programmer and tech interviewer. "
+                "You design problems requiring pattern recognition: sliding window, "
+                "two pointers, BFS/DFS, DP, binary search, greedy, union find, etc."
+            ),
+            llm=MODEL_FAST,
+            verbose=False,
+            allow_delegation=False,
+        )
+    return _quiz_agent
 
 
 def generate_algorithm_quiz(
@@ -65,7 +75,8 @@ def generate_algorithm_quiz(
         json_end = result.rindex("}") + 1
         data = json.loads(result[json_start:json_end])
         return data.get("questions", [])
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse algorithm quiz JSON: %s | raw: %s", e, result[:200])
         return []
 
 
@@ -130,12 +141,20 @@ def generate_constraint_quiz(
         json_end = result.rindex("}") + 1
         data = json.loads(result[json_start:json_end])
         return data.get("questions", [])
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse constraint quiz JSON: %s | raw: %s", e, result[:200])
         return []
 
 
+_ml_math_agent: Agent | None = None
+
+
 def create_ml_math_agent() -> Agent:
-    return Agent(
+    """Return a singleton ML math agent (created once, reused across requests)."""
+    global _ml_math_agent
+    if _ml_math_agent is not None:
+        return _ml_math_agent
+    _ml_math_agent = Agent(
         role="ML Math Drill Instructor",
         goal=(
             "Generate math questions tied to machine learning. "
@@ -148,10 +167,11 @@ def create_ml_math_agent() -> Agent:
             "to concrete ML algorithms: linear algebra for PCA/SVD, probability for "
             "Bayesian methods, calculus for backpropagation, optimization for training."
         ),
-        llm=MODEL_STRONG,
+        llm=MODEL_FAST,
         verbose=False,
         allow_delegation=False,
     )
+    return _ml_math_agent
 
 
 def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
@@ -234,5 +254,6 @@ def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
         json_start = result.index("{")
         json_end = result.rindex("}") + 1
         return json.loads(result[json_start:json_end])
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse ML math question JSON: %s | raw: %s", e, result[:200])
         return {}

@@ -32,7 +32,7 @@ export default function Dashboard() {
     Promise.all([
       fetch("/api/dashboard/skills").then((r) => r.json()),
       fetch("/api/dashboard/stats").then((r) => r.json()),
-      fetch("/api/quiz-history?limit=10000").then((r) => r.json()),
+      fetch("/api/quiz-history?limit=500").then((r) => r.json()),
       fetch("/api/reviews/due").then((r) => r.json()),
     ])
       .then(([skillsData, statsData, quizData, reviewData]) => {

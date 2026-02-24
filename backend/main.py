@@ -4,14 +4,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.database import init_db, get_db
 from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory
 from backend.models.schemas import (
     SessionStart, SessionResponse, SkillResponse, ReviewDue, StatsResponse, WSMessage,
-    ConceptMerge,
+    ConceptMerge, QuizHistorySave,
 )
 from backend.agents.orchestrator import Orchestrator, Phase
 from backend.agents.professor import generate_summary
@@ -25,6 +25,7 @@ from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
 )
 from backend.services.concept_matcher import find_matching_concept, deduplicate_concepts
+from backend.config import QUIZ_HISTORY_DEFAULT_LIMIT, QUIZ_HISTORY_MAX_LIMIT
 
 
 @asynccontextmanager
@@ -229,14 +230,14 @@ async def get_ml_math_question(topic: str = "all"):
 
 
 @app.post("/api/quiz-history")
-async def save_quiz_history(body: dict, db: AsyncSession = Depends(get_db)):
+async def save_quiz_history(body: QuizHistorySave, db: AsyncSession = Depends(get_db)):
     """Save a completed quiz attempt."""
     entry = QuizHistory(
-        quiz_type=body.get("quiz_type", "unknown"),
-        topic=body.get("topic", "all"),
-        questions=body.get("questions", []),
-        answers=body.get("answers", {}),
-        score=body.get("score"),
+        quiz_type=body.quiz_type,
+        topic=body.topic,
+        questions=body.questions,
+        answers=body.answers,
+        score=body.score,
     )
     db.add(entry)
     await db.commit()
@@ -262,34 +263,18 @@ async def delete_concept(concept_id: int, db: AsyncSession = Depends(get_db)):
     if not concept:
         return {"error": "Concept not found"}
 
-    # Delete associated sessions and their messages
+    # Batch delete: get all session IDs, then delete messages and sessions in bulk
     sessions_result = await db.execute(
-        select(Session).where(Session.concept_id == concept_id)
+        select(Session.id).where(Session.concept_id == concept_id)
     )
-    for session in sessions_result.scalars().all():
-        msg_result = await db.execute(
-            select(Message).where(Message.session_id == session.id)
-        )
-        for msg in msg_result.scalars().all():
-            await db.delete(msg)
-        await db.delete(session)
+    session_ids = [row[0] for row in sessions_result.all()]
 
-    # Delete skill score
-    skill_result = await db.execute(
-        select(SkillScore).where(SkillScore.concept_id == concept_id)
-    )
-    skill = skill_result.scalar_one_or_none()
-    if skill:
-        await db.delete(skill)
+    if session_ids:
+        await db.execute(delete(Message).where(Message.session_id.in_(session_ids)))
+        await db.execute(delete(Session).where(Session.id.in_(session_ids)))
 
-    # Delete review schedule
-    review_result = await db.execute(
-        select(ReviewSchedule).where(ReviewSchedule.concept_id == concept_id)
-    )
-    review = review_result.scalar_one_or_none()
-    if review:
-        await db.delete(review)
-
+    await db.execute(delete(SkillScore).where(SkillScore.concept_id == concept_id))
+    await db.execute(delete(ReviewSchedule).where(ReviewSchedule.concept_id == concept_id))
     await db.delete(concept)
     await db.commit()
     return {"status": "deleted", "id": concept_id}
@@ -297,13 +282,18 @@ async def delete_concept(concept_id: int, db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/quiz-history")
 async def get_quiz_history(
-    quiz_type: str | None = None, limit: int = 10000,
+    quiz_type: str | None = None,
+    limit: int = QUIZ_HISTORY_DEFAULT_LIMIT,
+    offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get recent quiz history, optionally filtered by type."""
-    query = select(QuizHistory).order_by(QuizHistory.created_at.desc()).limit(limit)
+    """Get recent quiz history, optionally filtered by type. Paginated."""
+    limit = max(1, min(limit, QUIZ_HISTORY_MAX_LIMIT))
+    offset = max(0, offset)
+    query = select(QuizHistory).order_by(QuizHistory.created_at.desc())
     if quiz_type:
         query = query.where(QuizHistory.quiz_type == quiz_type)
+    query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     entries = result.scalars().all()
     return [
@@ -406,10 +396,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         "questions": comprehension_mcqs,
                     })
 
-                # Generate initial summary immediately after explain
-                await _update_summary(
-                    db, websocket, session_id, orchestrator, state
-                )
+                # Summary is generated only at session completion to reduce API costs
 
             # Main message loop
             while True:
@@ -526,10 +513,6 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
                     # Check for special response types (MCQ, code challenge)
                     if response == "__MCQ__":
-                        # Update summary before evaluation
-                        await _update_summary(
-                            db, websocket, session_id, orchestrator, state
-                        )
                         await websocket.send_json({
                             "type": "mcq",
                             "questions": state.mcq_questions,
@@ -541,10 +524,6 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         continue
 
                     if response == "__CODE_CHALLENGE__":
-                        # Update summary before evaluation
-                        await _update_summary(
-                            db, websocket, session_id, orchestrator, state
-                        )
                         await websocket.send_json({
                             "type": "code_challenge",
                             "problem": state.code_challenge.get("problem", ""),

@@ -11,6 +11,7 @@ import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models.tables import ReviewSchedule, Concept
+from backend.config import SM2_DEFAULT_EASINESS
 
 
 def score_to_quality(score: float) -> int:
@@ -76,7 +77,7 @@ async def update_review_schedule(
 
     if schedule is None:
         # First time — create schedule
-        reps, ef, interval = calculate_sm2(quality, 0, 2.5, 1.0)
+        reps, ef, interval = calculate_sm2(quality, 0, SM2_DEFAULT_EASINESS, 1.0)
         schedule = ReviewSchedule(
             concept_id=concept_id,
             easiness_factor=ef,

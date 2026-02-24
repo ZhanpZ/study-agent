@@ -1,7 +1,16 @@
 import json
+import hashlib
+import logging
+import time
 from crewai import Agent, Task
-from backend.config import MODEL_STRONG
+from backend.config import MODEL_STRONG, MODEL_FAST, MASTERY_SCORE_THRESHOLD
 from backend.models.schemas import TesterEvaluation
+
+logger = logging.getLogger(__name__)
+
+# Cache comprehension MCQs by topic+explanation hash (TTL: 24 hours)
+_mcq_cache: dict[str, tuple[float, list[dict]]] = {}
+_MCQ_CACHE_TTL = 86400  # 24 hours
 
 
 def create_tester_agent() -> Agent:
@@ -91,7 +100,8 @@ def generate_mcq(
         json_end = result.rindex("}") + 1
         data = json.loads(result[json_start:json_end])
         return data.get("questions", [])
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse MCQ JSON for topic '%s': %s | raw: %s", topic, e, result[:200])
         return [
             {
                 "question": f"What is the key concept behind {topic}?",
@@ -126,7 +136,7 @@ def score_mcq(questions: list[dict], answers: list[str]) -> TesterEvaluation:
             gaps.append(f"Missed: {q['question']}")
 
     score = round((correct / total) * 100)
-    mastered = score >= 80 and len(gaps) <= 1
+    mastered = score >= MASTERY_SCORE_THRESHOLD and len(gaps) <= 1
 
     feedback = f"You got {correct}/{total} correct."
     if mastered:
@@ -189,7 +199,8 @@ def generate_code_challenge(
             "problem": data.get("problem", f"Write a solution related to {topic}"),
             "hints": data.get("hints", []),
         }
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse code challenge JSON for '%s': %s | raw: %s", topic, e, result[:200])
         return {
             "problem": f"Write a complete implementation of {topic} in Python.",
             "hints": ["Think about edge cases", "Consider time complexity"],
@@ -238,11 +249,38 @@ def evaluate_code(
     return _parse_evaluation(result, 0)
 
 
+_comprehension_agent: Agent | None = None
+
+
+def _get_comprehension_agent() -> Agent:
+    """Lazily create a lightweight agent for comprehension MCQs (uses MODEL_FAST)."""
+    global _comprehension_agent
+    if _comprehension_agent is None:
+        _comprehension_agent = Agent(
+            role="Comprehension Check Generator",
+            goal="Generate comprehension-check MCQs from explanations.",
+            backstory="Educator who creates quick comprehension checks for SDE/MLE topics.",
+            llm=MODEL_FAST,
+            verbose=False,
+            allow_delegation=False,
+        )
+    return _comprehension_agent
+
+
 def generate_comprehension_mcqs(
     agent: Agent,
     topic: str,
     explanation: str,
 ) -> list[dict]:
+    # Check cache by topic + explanation hash
+    cache_key = hashlib.md5(f"{topic}:{explanation}".encode()).hexdigest()
+    now = time.time()
+    if cache_key in _mcq_cache:
+        cached_time, cached_result = _mcq_cache[cache_key]
+        if now - cached_time < _MCQ_CACHE_TTL:
+            return cached_result
+
+    comprehension_agent = _get_comprehension_agent()
     explanation_len = len(explanation)
     if explanation_len < 500:
         num_questions = 2
@@ -265,16 +303,20 @@ def generate_comprehension_mcqs(
             "  ...\n]}"
         ),
         expected_output=f"Valid JSON with {num_questions} comprehension MCQs.",
-        agent=agent,
+        agent=comprehension_agent,
     )
-    result = str(agent.execute_task(task))
+    result = str(comprehension_agent.execute_task(task))
 
     try:
         json_start = result.index("{")
         json_end = result.rindex("}") + 1
         data = json.loads(result[json_start:json_end])
-        return data.get("questions", [])
-    except (json.JSONDecodeError, ValueError):
+        questions = data.get("questions", [])
+        if questions:
+            _mcq_cache[cache_key] = (now, questions)
+        return questions
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse comprehension MCQ JSON for '%s': %s | raw: %s", topic, e, result[:200])
         return []
 
 
@@ -289,7 +331,8 @@ def _parse_evaluation(result: str, fallback_score: float) -> TesterEvaluation:
             mastered=data.get("mastered", False),
             feedback=data.get("feedback", ""),
         )
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse evaluation JSON: %s | raw: %s", e, result[:200])
         return TesterEvaluation(
             score=fallback_score,
             gaps=["Unable to parse evaluation — please continue teaching"],

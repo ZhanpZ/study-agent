@@ -5,6 +5,7 @@ from difflib import SequenceMatcher
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session
+from backend.config import CONCEPT_SIMILARITY_THRESHOLD
 
 
 def normalize(text: str) -> str:
@@ -42,7 +43,7 @@ def similarity(a: str, b: str) -> float:
 
 
 async def find_matching_concept(
-    db: AsyncSession, topic: str, threshold: float = 0.7
+    db: AsyncSession, topic: str, threshold: float = CONCEPT_SIMILARITY_THRESHOLD
 ) -> Concept | None:
     """Find an existing concept that matches the given topic above threshold."""
     # Fast path: exact match
@@ -70,7 +71,7 @@ async def find_matching_concept(
     return None
 
 
-async def deduplicate_concepts(db: AsyncSession, threshold: float = 0.7) -> int:
+async def deduplicate_concepts(db: AsyncSession, threshold: float = CONCEPT_SIMILARITY_THRESHOLD) -> int:
     """Scan all concepts and merge duplicates. Returns number of merges performed."""
     result = await db.execute(select(Concept).order_by(Concept.id))
     concepts = list(result.scalars().all())

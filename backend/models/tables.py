@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Integer, String, Float, JSON, DateTime, ForeignKey, Text
+from sqlalchemy import Integer, String, Float, JSON, DateTime, ForeignKey, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.models.database import Base
 
@@ -47,6 +47,10 @@ class ReviewSchedule(Base):
 
     concept: Mapped["Concept"] = relationship(back_populates="review_schedule")
 
+    __table_args__ = (
+        Index("ix_review_schedule_next_review", "next_review"),
+    )
+
 
 class Session(Base):
     __tablename__ = "sessions"
@@ -64,6 +68,10 @@ class Session(Base):
     concept: Mapped["Concept"] = relationship(back_populates="sessions")
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
 
+    __table_args__ = (
+        Index("ix_sessions_concept_id", "concept_id"),
+    )
+
 
 class QuizHistory(Base):
     __tablename__ = "quiz_history"
@@ -76,6 +84,11 @@ class QuizHistory(Base):
     score: Mapped[float] = mapped_column(Float, nullable=True)  # percentage correct
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_quiz_history_quiz_type", "quiz_type"),
+        Index("ix_quiz_history_created_at", "created_at"),
     )
 
 
@@ -92,3 +105,7 @@ class Message(Base):
     )
 
     session: Mapped["Session"] = relationship(back_populates="messages")
+
+    __table_args__ = (
+        Index("ix_messages_session_id_timestamp", "session_id", "timestamp"),
+    )

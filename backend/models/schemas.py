@@ -1,10 +1,18 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
 class SessionStart(BaseModel):
-    topic: str
+    topic: str = Field(..., min_length=1, max_length=500)
     mode: str = "concept"  # "concept", "industrial", or "leetcode"
+
+    @field_validator("topic")
+    @classmethod
+    def validate_topic(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("topic must not be empty")
+        return v
 
     @field_validator("mode")
     @classmethod
@@ -71,3 +79,19 @@ class StatsResponse(BaseModel):
 class ConceptMerge(BaseModel):
     source_id: int
     target_id: int
+
+
+class QuizHistorySave(BaseModel):
+    quiz_type: str = Field(..., max_length=30)
+    topic: str = Field(default="all", max_length=255)
+    questions: list = Field(default_factory=list)
+    answers: dict = Field(default_factory=dict)
+    score: float | None = None
+
+    @field_validator("quiz_type")
+    @classmethod
+    def validate_quiz_type(cls, v):
+        allowed = {"algorithm", "constraint", "ml_math"}
+        if v not in allowed:
+            raise ValueError(f"quiz_type must be one of {allowed}")
+        return v

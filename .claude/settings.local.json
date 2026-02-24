@@ -6,7 +6,10 @@
       "Bash(npm install:*)",
       "Bash(curl:*)",
       "Bash(npx vite build)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(wc:*)",
+      "Bash(sqlite3:*)",
+      "Bash(grep:*)"
     ]
   }
 }

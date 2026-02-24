@@ -7,6 +7,7 @@ from backend.agents.tester import (
     generate_code_challenge, evaluate_code,
 )
 from backend.models.schemas import TesterEvaluation
+from backend.config import MAX_TEACH_ROUNDS, MASTERY_SCORE_THRESHOLD
 
 
 class Phase(str, Enum):
@@ -27,7 +28,7 @@ class SessionState:
     skill_level: float = 0.0
     conversation_history: list[dict] = field(default_factory=list)
     teach_rounds: int = 0
-    max_teach_rounds: int = 5
+    max_teach_rounds: int = MAX_TEACH_ROUNDS
     last_evaluation: TesterEvaluation | None = None
     mcq_questions: list[dict] | None = None  # stored MCQs for scoring
     code_challenge: dict | None = None  # stored code challenge for evaluation
