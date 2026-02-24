@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
+import { useToast } from "../components/Toast";
 
-function saveQuizHistory(quiz_type, topic, questions, answers, score) {
+function saveQuizHistory(quiz_type, topic, questions, answers, score, addToast) {
   fetch("/api/quiz-history", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ quiz_type, topic, questions, answers, score }),
-  }).catch(() => {});
+  }).catch(() => {
+    if (addToast) addToast("Failed to save quiz results", "warning");
+  });
 }
 
 function usePersistedState(key, defaultValue) {
@@ -84,6 +87,7 @@ function AlgorithmTab() {
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = usePersistedState("algoQuiz_answers", {});
   const [revealed, setRevealed] = usePersistedState("algoQuiz_revealed", {});
+  const { addToast } = useToast();
 
   const generateQuiz = async () => {
     setLoading(true);
@@ -92,9 +96,15 @@ function AlgorithmTab() {
     setRevealed({});
     try {
       const res = await fetch(`/api/algorithm-quiz?topic=${topic}&count=5`);
+      if (!res.ok) throw new Error("Server error");
       const data = await res.json();
-      setQuestions(data.questions);
+      if (!data.questions || data.questions.length === 0) {
+        addToast("No questions generated. Try a different topic.", "warning");
+      } else {
+        setQuestions(data.questions);
+      }
     } catch (err) {
+      addToast("Failed to generate quiz. Check your connection.", "error");
       console.error("Failed to generate quiz:", err);
     } finally {
       setLoading(false);
@@ -121,6 +131,7 @@ function AlgorithmTab() {
       saveQuizHistory(
         "algorithm", topic, questions, answers,
         Math.round((totalCorrect / questions.length) * 100),
+        addToast,
       );
     }
   }, [totalAnswered]);
@@ -213,6 +224,7 @@ function ConstraintTab() {
   const [selectionsRaw, setSelectionsRaw] = usePersistedState("constQuiz_selections", {});
   const [revealed, setRevealed] = usePersistedState("constQuiz_revealed", {});
   const [showRef, setShowRef] = useState(false);
+  const { addToast } = useToast();
 
   // Convert stored arrays back to Sets for component use
   const selections = {};
@@ -243,9 +255,15 @@ function ConstraintTab() {
     setRevealed({});
     try {
       const res = await fetch("/api/constraint-quiz?count=5");
+      if (!res.ok) throw new Error("Server error");
       const data = await res.json();
-      setQuestions(data.questions);
+      if (!data.questions || data.questions.length === 0) {
+        addToast("No questions generated. Try again.", "warning");
+      } else {
+        setQuestions(data.questions);
+      }
     } catch (err) {
+      addToast("Failed to generate quiz. Check your connection.", "error");
       console.error("Failed to generate quiz:", err);
     } finally {
       setLoading(false);
@@ -299,6 +317,7 @@ function ConstraintTab() {
       saveQuizHistory(
         "constraint", "all", questions, selObj,
         Math.round((totalPerfect / questions.length) * 100),
+        addToast,
       );
     }
   }, [totalAnswered]);

@@ -412,12 +412,17 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                             active_sessions[session_id] = (orchestrator, state)
 
                             if response == "__CODE_CHALLENGE__":
-                                await websocket.send_json({
+                                challenge_msg = {
                                     "type": "code_challenge",
                                     "problem": state.code_challenge.get("problem", ""),
                                     "hints": state.code_challenge.get("hints", []),
                                     "phase": "evaluate",
-                                })
+                                }
+                                # Pass through LeetCode metadata if present
+                                for key in ("url", "title", "difficulty", "leetcode_id"):
+                                    if key in state.code_challenge:
+                                        challenge_msg[key] = state.code_challenge[key]
+                                await websocket.send_json(challenge_msg)
                                 await websocket.send_json({
                                     "type": "phase_change", "phase": "evaluate",
                                 })
@@ -524,12 +529,16 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         continue
 
                     if response == "__CODE_CHALLENGE__":
-                        await websocket.send_json({
+                        challenge_msg = {
                             "type": "code_challenge",
                             "problem": state.code_challenge.get("problem", ""),
                             "hints": state.code_challenge.get("hints", []),
                             "phase": "evaluate",
-                        })
+                        }
+                        for key in ("url", "title", "difficulty", "leetcode_id"):
+                            if key in state.code_challenge:
+                                challenge_msg[key] = state.code_challenge[key]
+                        await websocket.send_json(challenge_msg)
                         await websocket.send_json({
                             "type": "phase_change", "phase": "evaluate",
                         })

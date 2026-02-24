@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useToast } from "../components/Toast";
 
 function usePersistedState(key, defaultValue) {
   const [value, setValue] = useState(() => {
@@ -67,6 +68,7 @@ export default function MLMathDrill() {
   const [proofAnswer, setProofAnswer] = usePersistedState("mlMath_proofAnswer", null);
   const [proofRevealed, setProofRevealed] = usePersistedState("mlMath_proofRevealed", false);
   const [stats, setStats] = usePersistedState("mlMath_stats", { total: 0, mathCorrect: 0, proofCorrect: 0 });
+  const { addToast } = useToast();
 
   const fetchQuestion = async () => {
     setLoading(true);
@@ -78,11 +80,15 @@ export default function MLMathDrill() {
     setProofRevealed(false);
     try {
       const res = await fetch(`/api/ml-math?topic=${encodeURIComponent(topic)}`);
+      if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (data.question && data.question.math_question) {
         setQuestion(data.question);
+      } else {
+        addToast("Failed to generate a valid question. Try again.", "warning");
       }
     } catch (err) {
+      addToast("Failed to generate question. Check your connection.", "error");
       console.error("Failed to generate question:", err);
     } finally {
       setLoading(false);
@@ -124,7 +130,9 @@ export default function MLMathDrill() {
         answers: { math: mathAnswer, proof: proofAnswer },
         score: (mathOk && proofOk) ? 100 : (mathOk || proofOk) ? 50 : 0,
       }),
-    }).catch(() => {});
+    }).catch(() => {
+      addToast("Failed to save drill results", "warning");
+    });
   };
 
   const stepIdx = STEPS.findIndex((s) => s.key === step);

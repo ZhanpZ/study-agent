@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
 
 export default function Dashboard() {
@@ -9,14 +10,20 @@ export default function Dashboard() {
   const [reviewsDue, setReviewsDue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedConcept, setSelectedConcept] = useState(null);
+  const { addToast } = useToast();
 
   const deleteQuizEntry = async (entryId) => {
     try {
       const res = await fetch(`/api/quiz-history/${entryId}`, { method: "DELETE" });
       if (res.ok) {
         setQuizHistory((prev) => prev.filter((e) => e.id !== entryId));
+        addToast("Entry deleted", "success", 2000);
+      } else {
+        addToast("Failed to delete entry", "error");
       }
-    } catch {}
+    } catch {
+      addToast("Failed to delete entry. Check your connection.", "error");
+    }
   };
 
   const deleteConcept = async (conceptId) => {
@@ -24,8 +31,13 @@ export default function Dashboard() {
       const res = await fetch(`/api/concepts/${conceptId}`, { method: "DELETE" });
       if (res.ok) {
         setSkills((prev) => prev.filter((s) => s.concept_id !== conceptId));
+        addToast("Concept deleted", "success", 2000);
+      } else {
+        addToast("Failed to delete concept", "error");
       }
-    } catch {}
+    } catch {
+      addToast("Failed to delete concept. Check your connection.", "error");
+    }
   };
 
   useEffect(() => {
@@ -42,15 +54,14 @@ export default function Dashboard() {
         setReviewsDue(reviewData);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        addToast("Failed to load dashboard data", "error");
+        setLoading(false);
+      });
   }, []);
 
   if (loading) {
-    return (
-      <div className="text-center text-focus-text-muted mt-20">
-        Loading dashboard...
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   // Derive section-specific data
@@ -512,6 +523,59 @@ function ActivityRow({ entry, onDelete }) {
             </svg>
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Skeleton Loader ──────────────────────────────── */
+
+function SkeletonBlock({ className = "" }) {
+  return <div className={`bg-gray-700/50 rounded skeleton-pulse ${className}`} />;
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Overview stats skeleton */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-focus-surface border border-focus-border rounded-xl p-4 text-center">
+            <SkeletonBlock className="w-8 h-8 mx-auto mb-2 rounded-full" />
+            <SkeletonBlock className="w-12 h-7 mx-auto mb-1" />
+            <SkeletonBlock className="w-20 h-3 mx-auto" />
+          </div>
+        ))}
+      </div>
+      {/* Section cards skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-focus-surface border border-focus-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <SkeletonBlock className="w-32 h-4" />
+              <SkeletonBlock className="w-16 h-3" />
+            </div>
+            <div className="space-y-3">
+              <SkeletonBlock className="w-full h-3" />
+              <SkeletonBlock className="w-3/4 h-3" />
+              <SkeletonBlock className="w-full h-2" />
+              <SkeletonBlock className="w-5/6 h-3" />
+              <SkeletonBlock className="w-full h-2" />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Activity skeleton */}
+      <div className="bg-focus-surface border border-focus-border rounded-xl p-5">
+        <SkeletonBlock className="w-28 h-4 mb-4" />
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <SkeletonBlock className="w-24 h-4" />
+              <SkeletonBlock className="w-16 h-4" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

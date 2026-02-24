@@ -9,7 +9,8 @@
       "Bash(npm run build:*)",
       "Bash(wc:*)",
       "Bash(sqlite3:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

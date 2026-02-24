@@ -157,6 +157,21 @@ def generate_code_challenge(
     conversation_history: list[dict],
     mode: str = "leetcode",
 ) -> dict:
+    # For leetcode mode, fetch a real LeetCode problem first
+    if mode == "leetcode":
+        from backend.services.leetcode_fetcher import fetch_leetcode_problem
+
+        real_problem = fetch_leetcode_problem(topic)
+        if real_problem:
+            logger.info(
+                "Using real LeetCode problem: %s (%s)",
+                real_problem.get("title"), real_problem.get("difficulty"),
+            )
+            return real_problem
+
+        logger.warning("Failed to fetch real LeetCode problem for '%s', falling back to generated", topic)
+
+    # Fallback: generate a problem (always used for industrial mode)
     history_text = "\n".join(
         f"[{m.get('agent', 'unknown')}]: {m['content']}" for m in conversation_history[-10:]
     )
@@ -169,7 +184,7 @@ def generate_code_challenge(
             "- Include error handling and edge cases\n"
             "- Solvable in 20-40 lines of production code\n"
         )
-    else:  # leetcode
+    else:  # leetcode fallback
         problem_instruction = (
             "Requirements:\n"
             "- Apply algorithm patterns from the session\n"
