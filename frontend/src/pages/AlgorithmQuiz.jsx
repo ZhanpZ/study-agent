@@ -501,7 +501,27 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
               </span>
             ))}
           </div>
-          <p className="text-xs text-gray-400 font-mono">{question.constraints}</p>
+          {question.problem && (
+            <p className="text-sm text-gray-300 mt-2">{question.problem}</p>
+          )}
+          {question.example && (
+            <p className="text-xs text-gray-400 mt-1.5 font-mono bg-gray-900/50 px-2 py-1.5 rounded">{question.example}</p>
+          )}
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <p className="text-xs text-gray-400 font-mono">{question.constraints}</p>
+            {question.variables && Object.keys(question.variables).length > 0 && (
+              <p className="text-xs text-gray-500">
+                where{" "}
+                {Object.entries(question.variables).map(([v, desc], i, arr) => (
+                  <span key={v}>
+                    <span className="text-amber-400 font-mono">{v}</span>
+                    <span> = {desc}</span>
+                    {i < arr.length - 1 && ", "}
+                  </span>
+                ))}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -582,6 +602,28 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
           {question.explanation && (
             <p className="text-xs opacity-80 whitespace-pre-wrap">{question.explanation}</p>
           )}
+        </div>
+      )}
+
+      {/* Solution hints for missed correct answers */}
+      {isRevealed && score && score.missed > 0 && question.solution_hints && (
+        <div className="space-y-2">
+          {question.options
+            .filter((option) => {
+              const letter = option.charAt(0);
+              return correctSet.has(letter) && !selected.has(letter);
+            })
+            .map((option) => {
+              const letter = option.charAt(0);
+              const hint = question.solution_hints[letter];
+              if (!hint) return null;
+              return (
+                <div key={letter} className="text-xs p-3 rounded-lg bg-yellow-900/15 border border-yellow-700/40">
+                  <span className="font-medium text-yellow-300">{option}</span>
+                  <p className="text-yellow-200/70 mt-1">{hint}</p>
+                </div>
+              );
+            })}
         </div>
       )}
     </div>

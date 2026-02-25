@@ -104,11 +104,26 @@ def generate_constraint_quiz(
             "For each question provide:\n"
             "1. keywords: 2-4 problem signal words (e.g. 'shortest path', 'subarray sum', "
             "'connected components', 'subsequence')\n"
-            "2. constraints: the input size constraint (e.g. '1 <= n <= 10^5')\n"
-            "3. options: 6 algorithms/approaches as choices (labeled A-F)\n"
-            "4. correct: list of ALL correct answer letters (multiple can be correct)\n"
-            "5. explanation: for EACH correct answer, why it works within the constraint; "
-            "for EACH wrong answer, why it's too slow or doesn't fit\n\n"
+            "2. problem: a 1-2 sentence problem description, like a mini LeetCode problem "
+            "statement (e.g. 'Given a weighted directed graph with n nodes and m edges, "
+            "find the shortest path from node 1 to node n.')\n"
+            "3. example: a short input/output example that makes the problem concrete "
+            "(e.g. 'Input: n=4, edges=[[1,2,3],[2,4,1],[1,3,7],[3,4,2]] → Output: 4 "
+            "(path 1→2→4 with cost 3+1)')\n"
+            "4. variables: an object mapping EVERY variable used in the constraints to a "
+            "plain-English description (e.g. {\"n\": \"number of nodes in the graph\", "
+            "\"edges\": \"number of edges in the graph\"}). Every variable that appears in "
+            "the constraints string MUST have an entry here.\n"
+            "5. constraints: the input size constraint (e.g. '1 <= n <= 10^5')\n"
+            "6. options: 6 algorithms/approaches as choices (labeled A-F)\n"
+            "7. correct: list of ALL correct answer letters (multiple can be correct)\n"
+            "8. explanation: for EACH correct answer, why it works within the constraint; "
+            "for EACH wrong answer, why it's too slow or doesn't fit\n"
+            "9. solution_hints: an object mapping EACH correct answer letter to a 2-3 sentence "
+            "description of how to solve the problem using that algorithm. Describe the approach "
+            "step by step (e.g. {\"A\": \"Build an adjacency list. Run Dijkstra from node 1 using "
+            "a min-heap. Relax edges greedily — the first time node n is popped, that distance is "
+            "the answer.\"})\n\n"
             "IMPORTANT RULES:\n"
             "- Each question MUST have 2-4 correct answers out of 6 options\n"
             "- Include algorithms that are technically correct but too slow for the constraint\n"
@@ -119,6 +134,9 @@ def generate_constraint_quiz(
             '{"questions": [\n'
             '  {\n'
             '    "keywords": ["shortest path", "weighted graph"],\n'
+            '    "problem": "Given a weighted directed graph with n nodes and m edges, find the shortest path from node 1 to node n.",\n'
+            '    "example": "Input: n=4, edges=[[1,2,3],[2,4,1],[1,3,7],[3,4,2]] → Output: 4 (path 1→2→4 with cost 3+1)",\n'
+            '    "variables": {"n": "number of nodes in the graph", "edges": "number of edges in the graph"},\n'
             '    "constraints": "1 <= n <= 10^5, 1 <= edges <= 10^5",\n'
             '    "options": ["A) Dijkstra O(E log V)", "B) Bellman-Ford O(VE)", '
             '"C) Floyd-Warshall O(V^3)", "D) BFS O(V+E)", '
@@ -127,7 +145,9 @@ def generate_constraint_quiz(
             '    "explanation": "A) Dijkstra runs in O(E log V) ≈ 10^5 * 17 ≈ feasible. '
             'F) A* similar complexity. B) Bellman-Ford O(VE) = 10^10 too slow. '
             'C) Floyd-Warshall O(V^3) = 10^15 too slow. '
-            'D,E) BFS/DFS don\'t handle weighted edges correctly."\n'
+            'D,E) BFS/DFS don\'t handle weighted edges correctly.",\n'
+            '    "solution_hints": {"A": "Build an adjacency list from the edge list. Run Dijkstra from node 1 using a min-heap (heapq). Relax edges greedily — the first time node n is popped, that distance is the answer.", '
+            '"F": "Similar to Dijkstra but use a heuristic function (e.g. Euclidean distance if coordinates are given) to guide the search toward node n, reducing the number of nodes explored."}\n'
             "  }\n"
             "]}"
         ),
