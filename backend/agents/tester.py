@@ -3,7 +3,7 @@ import hashlib
 import logging
 import time
 from crewai import Agent, Task
-from backend.config import MODEL_STRONG, MODEL_FAST, MASTERY_SCORE_THRESHOLD
+from backend.config import MODEL_STRONG, MODEL_FAST, MASTERY_SCORE_THRESHOLD, LLM_COMPREHENSION
 from backend.models.schemas import TesterEvaluation
 
 logger = logging.getLogger(__name__)
@@ -268,14 +268,14 @@ _comprehension_agent: Agent | None = None
 
 
 def _get_comprehension_agent() -> Agent:
-    """Lazily create a lightweight agent for comprehension MCQs (uses MODEL_FAST)."""
+    """Lazily create a lightweight agent for comprehension MCQs (uses LLM_COMPREHENSION with tuned temperature)."""
     global _comprehension_agent
     if _comprehension_agent is None:
         _comprehension_agent = Agent(
             role="Comprehension Check Generator",
             goal="Generate comprehension-check MCQs from explanations.",
             backstory="Educator who creates quick comprehension checks for SDE/MLE topics.",
-            llm=MODEL_FAST,
+            llm=LLM_COMPREHENSION,
             verbose=False,
             allow_delegation=False,
         )

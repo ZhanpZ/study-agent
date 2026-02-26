@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "../components/Toast";
 
 function saveQuizHistory(quiz_type, topic, questions, answers, score, addToast) {
@@ -9,6 +9,82 @@ function saveQuizHistory(quiz_type, topic, questions, answers, score, addToast) 
   }).catch(() => {
     if (addToast) addToast("Failed to save quiz results", "warning");
   });
+}
+
+function ReportButton({ quizType, questionData, addToast }) {
+  const [open, setOpen] = useState(false);
+  const [issue, setIssue] = useState("");
+  const [sending, setSending] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const submit = async () => {
+    if (!issue.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/quiz-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quiz_type: quizType,
+          question_data: questionData,
+          reported_issue: issue.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      addToast("Report submitted. Thanks!", "success");
+      setOpen(false);
+      setIssue("");
+    } catch {
+      addToast("Failed to submit report.", "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        title="Report incorrect question"
+        className="text-gray-500 hover:text-red-400 transition-colors p-1"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-xl">
+          <p className="text-xs text-gray-400 mb-2">What's wrong with this question?</p>
+          <textarea
+            value={issue}
+            onChange={(e) => setIssue(e.target.value)}
+            placeholder="e.g. Wrong answer, ambiguous options..."
+            className="w-full bg-gray-900 text-sm text-gray-200 border border-gray-700 rounded p-2 resize-none h-16 focus:outline-none focus:border-red-500"
+            maxLength={500}
+          />
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={() => setOpen(false)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
+            <button
+              onClick={submit}
+              disabled={!issue.trim() || sending}
+              className="text-xs px-3 py-1 bg-red-600 text-white rounded hover:bg-red-500 disabled:opacity-50"
+            >
+              {sending ? "Sending..." : "Report"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function usePersistedState(key, defaultValue) {
@@ -35,20 +111,6 @@ const TABS = [
   { key: "constraint", label: "Constraint Matching" },
 ];
 
-const TOPICS = [
-  { value: "all", label: "All Topics" },
-  { value: "graphs", label: "Graphs" },
-  { value: "dp", label: "Dynamic Programming" },
-  { value: "trees", label: "Trees" },
-  { value: "sorting", label: "Sorting & Searching" },
-  { value: "greedy", label: "Greedy" },
-  { value: "strings", label: "Strings" },
-  { value: "arrays", label: "Arrays & Hashing" },
-  { value: "linked-lists", label: "Linked Lists" },
-  { value: "binary-search", label: "Binary Search" },
-  { value: "sliding-window", label: "Sliding Window" },
-  { value: "stack-queue", label: "Stacks & Queues" },
-];
 
 export default function AlgorithmQuiz() {
   const [activeTab, setActiveTab] = usePersistedState("algoQuiz_activeTab", "algorithm");
@@ -82,7 +144,6 @@ export default function AlgorithmQuiz() {
 /* ─── Algorithm Selection Tab ─────────────────────────────── */
 
 function AlgorithmTab() {
-  const [topic, setTopic] = usePersistedState("algoQuiz_topic", "all");
   const [questions, setQuestions] = usePersistedState("algoQuiz_questions", null);
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = usePersistedState("algoQuiz_answers", {});
@@ -95,11 +156,11 @@ function AlgorithmTab() {
     setAnswers({});
     setRevealed({});
     try {
-      const res = await fetch(`/api/algorithm-quiz?topic=${topic}&count=5`);
+      const res = await fetch("/api/algorithm-quiz?count=5");
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (!data.questions || data.questions.length === 0) {
-        addToast("No questions generated. Try a different topic.", "warning");
+        addToast("No questions generated. Try again.", "warning");
       } else {
         setQuestions(data.questions);
       }
@@ -114,9 +175,6 @@ function AlgorithmTab() {
   const handleSelect = (qIdx, letter) => {
     if (revealed[qIdx]) return;
     setAnswers((prev) => ({ ...prev, [qIdx]: letter }));
-  };
-
-  const handleReveal = (qIdx) => {
     setRevealed((prev) => ({ ...prev, [qIdx]: true }));
   };
 
@@ -129,7 +187,7 @@ function AlgorithmTab() {
   useEffect(() => {
     if (questions && totalAnswered === questions.length) {
       saveQuizHistory(
-        "algorithm", topic, questions, answers,
+        "algorithm", "all", questions, answers,
         Math.round((totalCorrect / questions.length) * 100),
         addToast,
       );
@@ -141,23 +199,6 @@ function AlgorithmTab() {
       <p className="text-gray-400 mb-4 text-sm">
         Given a problem description, pick the best algorithm or approach.
       </p>
-
-      {/* Topic selector */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {TOPICS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTopic(t.value)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-              topic === t.value
-                ? "bg-amber-600 border-amber-500 text-white"
-                : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       <button
         onClick={generateQuiz}
@@ -191,7 +232,7 @@ function AlgorithmTab() {
               selectedAnswer={answers[qIdx]}
               isRevealed={revealed[qIdx]}
               onSelect={(letter) => handleSelect(qIdx, letter)}
-              onReveal={() => handleReveal(qIdx)}
+              addToast={addToast}
             />
           ))}
         </div>
@@ -397,6 +438,7 @@ function ConstraintTab() {
               score={getScore(qIdx)}
               onToggle={(letter) => toggleSelection(qIdx, letter)}
               onReveal={() => handleReveal(qIdx)}
+              addToast={addToast}
             />
           ))}
         </div>
@@ -407,10 +449,13 @@ function ConstraintTab() {
 
 /* ─── Shared: Algorithm Question (single select) ──────────── */
 
-function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSelect, onReveal }) {
+function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSelect, addToast }) {
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
-      <p className="text-sm text-white font-medium">{index + 1}. {question.problem}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm text-white font-medium">{index + 1}. {question.problem}</p>
+        {isRevealed && <ReportButton quizType="algorithm" questionData={question} addToast={addToast} />}
+      </div>
 
       {question.example && (
         <div className="bg-gray-900 rounded-lg p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
@@ -419,7 +464,21 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
       )}
 
       {question.constraints && (
-        <p className="text-xs text-gray-500">Constraints: {question.constraints}</p>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <p className="text-xs text-gray-500 font-mono">Constraints: {question.constraints}</p>
+          {question.variables && Object.keys(question.variables).length > 0 && (
+            <p className="text-xs text-gray-500">
+              where{" "}
+              {Object.entries(question.variables).map(([v, desc], i, arr) => (
+                <span key={v}>
+                  <span className="text-amber-400 font-mono">{v}</span>
+                  <span> = {desc}</span>
+                  {i < arr.length - 1 && ", "}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="space-y-2">
@@ -455,15 +514,6 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
         })}
       </div>
 
-      {selectedAnswer && !isRevealed && (
-        <button
-          onClick={onReveal}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 transition-colors"
-        >
-          Check Answer
-        </button>
-      )}
-
       {isRevealed && question.explanation && (
         <div
           className={`text-sm p-3 rounded-lg ${
@@ -482,7 +532,7 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
 
 /* ─── Constraint Question (multi-select) ──────────────────── */
 
-function ConstraintQuestion({ index, question, selected, isRevealed, score, onToggle, onReveal }) {
+function ConstraintQuestion({ index, question, selected, isRevealed, score, onToggle, onReveal, addToast }) {
   const correctSet = new Set(question.correct);
 
   return (
@@ -490,7 +540,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
       {/* Keywords */}
       <div className="flex items-start gap-2">
         <span className="text-sm text-gray-400 font-medium shrink-0">{index + 1}.</span>
-        <div>
+        <div className="flex-1">
           <div className="flex flex-wrap gap-1.5 mb-2">
             {question.keywords.map((kw, i) => (
               <span
@@ -523,6 +573,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
             )}
           </div>
         </div>
+        {isRevealed && <ReportButton quizType="constraint" questionData={question} addToast={addToast} />}
       </div>
 
       {/* Select-all hint */}

@@ -8,10 +8,10 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.database import init_db, get_db
-from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory
+from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory, QuizFeedback
 from backend.models.schemas import (
     SessionStart, SessionResponse, SkillResponse, ReviewDue, StatsResponse, WSMessage,
-    ConceptMerge, QuizHistorySave,
+    ConceptMerge, QuizHistorySave, QuizFeedbackCreate,
 )
 from backend.agents.orchestrator import Orchestrator, Phase
 from backend.agents.professor import generate_summary
@@ -203,11 +203,11 @@ async def merge_concepts(body: ConceptMerge, db: AsyncSession = Depends(get_db))
 
 
 @app.get("/api/algorithm-quiz")
-async def get_algorithm_quiz(topic: str = "all", count: int = 5):
+async def get_algorithm_quiz(count: int = 5):
     """Generate algorithm selection quiz questions."""
     agent = create_quiz_agent()
-    questions = generate_algorithm_quiz(agent, topic_scope=topic, num_questions=min(count, 10))
-    return {"questions": questions, "topic": topic}
+    questions = generate_algorithm_quiz(agent, num_questions=min(count, 10))
+    return {"questions": questions}
 
 
 @app.get("/api/constraint-quiz")
@@ -308,6 +308,60 @@ async def get_quiz_history(
         }
         for e in entries
     ]
+
+
+# ─── Quiz Feedback Endpoints (Idea 10) ───────────────────────────
+
+
+@app.post("/api/quiz-feedback")
+async def save_quiz_feedback(body: QuizFeedbackCreate, db: AsyncSession = Depends(get_db)):
+    """Save a user report about an incorrect quiz question."""
+    entry = QuizFeedback(
+        quiz_type=body.quiz_type,
+        question_data=body.question_data,
+        reported_issue=body.reported_issue,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return {"id": entry.id, "status": "saved"}
+
+
+@app.get("/api/quiz-feedback")
+async def get_quiz_feedback(
+    quiz_type: str | None = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get reported quiz feedback, optionally filtered by type."""
+    limit = max(1, min(limit, 200))
+    query = select(QuizFeedback).order_by(QuizFeedback.created_at.desc())
+    if quiz_type:
+        query = query.where(QuizFeedback.quiz_type == quiz_type)
+    query = query.limit(limit)
+    result = await db.execute(query)
+    entries = result.scalars().all()
+    return [
+        {
+            "id": e.id,
+            "quiz_type": e.quiz_type,
+            "question_data": e.question_data,
+            "reported_issue": e.reported_issue,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in entries
+    ]
+
+
+@app.delete("/api/quiz-feedback/{entry_id}")
+async def delete_quiz_feedback(entry_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a quiz feedback entry."""
+    entry = await db.get(QuizFeedback, entry_id)
+    if not entry:
+        return {"error": "Entry not found"}
+    await db.delete(entry)
+    await db.commit()
+    return {"status": "deleted", "id": entry_id}
 
 
 # ─── WebSocket Endpoint ───────────────────────────────────────────

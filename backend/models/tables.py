@@ -92,6 +92,23 @@ class QuizHistory(Base):
     )
 
 
+class QuizFeedback(Base):
+    __tablename__ = "quiz_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    quiz_type: Mapped[str] = mapped_column(String(30))  # "algorithm", "constraint", "ml_math"
+    question_data: Mapped[dict] = mapped_column(JSON)  # full question that was reported
+    reported_issue: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_quiz_feedback_quiz_type", "quiz_type"),
+        Index("ix_quiz_feedback_created_at", "created_at"),
+    )
+
+
 class Message(Base):
     __tablename__ = "messages"
 

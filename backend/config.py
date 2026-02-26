@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from crewai import LLM
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
@@ -7,11 +8,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./study.db")
 
 # ─── Model Configuration ─────────────────────────────────────────
-# GPT-4o for Professor (teaching quality) and Tester (evaluation reasoning)
-# GPT-4o-mini for Student, quiz generation, comprehension MCQs (cost-efficient)
+# String aliases (used by professor, student, tester agents)
 MODEL_STRONG = "gpt-4o"
 MODEL_PROFESSOR = "gpt-4o"
 MODEL_FAST = "gpt-4o-mini"
+
+# LLM objects with explicit temperature (used by quiz generation)
+LLM_QUIZ = LLM(model="gpt-4o", temperature=0.3)           # algorithm & constraint quizzes
+LLM_MATH = LLM(model="gpt-4o", temperature=0.2)           # ML math drills (lowest temp)
+LLM_VERIFY = LLM(model="gpt-4o-mini", temperature=0.1)    # verification pass (cheap, deterministic)
+LLM_COMPREHENSION = LLM(model="gpt-4o-mini", temperature=0.4)  # comprehension MCQs
 
 # ─── Tuning Thresholds ───────────────────────────────────────────
 CONCEPT_SIMILARITY_THRESHOLD = 0.7  # fuzzy match threshold for deduplication
