@@ -10,7 +10,9 @@
       "Bash(wc:*)",
       "Bash(sqlite3:*)",
       "Bash(grep:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(pip install -r requirements-dev.txt)",
+      "Bash(npx vitest run)"
     ]
   }
 }

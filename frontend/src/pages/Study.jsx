@@ -3,9 +3,7 @@ import { useSession } from "../context/SessionContext";
 import { useToast } from "../components/Toast";
 import useWebSocket from "../hooks/useWebSocket";
 import Chat from "../components/Chat";
-
-const MIN_TOPIC_LENGTH = 2;
-const MAX_TOPIC_LENGTH = 100;
+import { validateTopic, MIN_TOPIC_LENGTH, MAX_TOPIC_LENGTH } from "../utils/validation";
 
 const MODE_CONFIG = {
   concept: {
@@ -101,19 +99,6 @@ export default function Study() {
 
   const activePhase = restoredPhase || phase;
   const activeMode = sessionMode || mode;
-
-  const validateTopic = (value) => {
-    if (value.length < MIN_TOPIC_LENGTH) {
-      return `Topic must be at least ${MIN_TOPIC_LENGTH} characters`;
-    }
-    if (value.length > MAX_TOPIC_LENGTH) {
-      return `Topic must be under ${MAX_TOPIC_LENGTH} characters`;
-    }
-    if (/^[^a-zA-Z0-9]+$/.test(value)) {
-      return "Topic must contain letters or numbers";
-    }
-    return "";
-  };
 
   const handleTopicChange = (e) => {
     const val = e.target.value;

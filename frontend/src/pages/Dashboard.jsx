@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
+import { deriveMlMathStats } from "../utils/statsHelpers";
 
 export default function Dashboard() {
   const [skills, setSkills] = useState([]);
@@ -582,33 +583,4 @@ function DashboardSkeleton() {
 }
 
 /* ─── Data Helpers ──────────────────────────────────── */
-
-function deriveMlMathStats(quizzes) {
-  let mathCorrect = 0,
-    mathTotal = 0,
-    proofCorrect = 0,
-    proofTotal = 0;
-  const topicSet = new Set();
-
-  quizzes.forEach((q) => {
-    const question = q.questions?.[0];
-    if (!question) return;
-
-    if (question.topic) topicSet.add(question.topic);
-
-    if (question.math_question) {
-      mathTotal++;
-      if (q.answers?.math === question.math_question.correct) mathCorrect++;
-    }
-    if (question.proof_question) {
-      proofTotal++;
-      if (q.answers?.proof === question.proof_question.correct) proofCorrect++;
-    }
-  });
-
-  return {
-    mathPct: mathTotal ? Math.round((mathCorrect / mathTotal) * 100) : null,
-    proofPct: proofTotal ? Math.round((proofCorrect / proofTotal) * 100) : null,
-    topics: [...topicSet],
-  };
-}
+// deriveMlMathStats is now imported from ../utils/statsHelpers

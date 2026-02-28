@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "../components/Toast";
+import { getConstraintScore } from "../utils/quizScoring";
 
 function saveQuizHistory(quiz_type, topic, questions, answers, score, addToast) {
   fetch("/api/quiz-history", {
@@ -331,12 +332,7 @@ function ConstraintTab() {
   const getScore = (qIdx) => {
     if (!questions || !revealed[qIdx]) return null;
     const q = questions[qIdx];
-    const correctSet = new Set(q.correct);
-    const userSet = selections[qIdx] || new Set();
-    const correctPicks = [...userSet].filter((l) => correctSet.has(l)).length;
-    const wrongPicks = [...userSet].filter((l) => !correctSet.has(l)).length;
-    const missed = [...correctSet].filter((l) => !userSet.has(l)).length;
-    return { correctPicks, wrongPicks, missed, total: correctSet.size };
+    return getConstraintScore(q.correct, selections[qIdx] || new Set());
   };
 
   const totalAnswered = Object.keys(revealed).length;
