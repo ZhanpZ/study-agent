@@ -38,14 +38,14 @@ export default function Review() {
   if (reviews.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center mb-4">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
-            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        <div className="w-16 h-16 rounded-2xl bg-focus-surface border border-focus-border flex items-center justify-center mb-4">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-focus-text-muted">
+            <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
           </svg>
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">All caught up!</h2>
+        <h2 className="text-xl font-bold text-white mb-2">No concepts yet</h2>
         <p className="text-focus-text-muted text-sm text-center max-w-xs">
-          No reviews due right now. Head to the Study page to learn something new.
+          Start studying a topic to build your concept bank.
         </p>
         <button
           onClick={() => navigate("/")}
@@ -58,47 +58,109 @@ export default function Review() {
     );
   }
 
+  const dueItems = reviews.filter((r) => r.status === "due");
+  const newItems = reviews.filter((r) => r.status === "new");
+  const upcomingItems = reviews.filter((r) => r.status === "upcoming");
+
+  const statusConfig = {
+    due: {
+      label: "Due for Review",
+      badgeColor: "text-focus-amber",
+      iconBg: "bg-orange-500/10 border-orange-500/20",
+      iconColor: "text-orange-400",
+      btnClass: "bg-orange-600 hover:bg-orange-500 shadow-orange-900/15",
+      btnText: "Review Now",
+    },
+    new: {
+      label: "New / Not Yet Reviewed",
+      badgeColor: "text-focus-teal",
+      iconBg: "bg-focus-teal/10 border-focus-teal/20",
+      iconColor: "text-focus-teal",
+      btnClass: "bg-focus-teal hover:bg-focus-teal-light shadow-focus-teal/10",
+      btnText: "Start",
+    },
+    upcoming: {
+      label: "Upcoming",
+      badgeColor: "text-focus-text-muted",
+      iconBg: "bg-focus-surface border-focus-border",
+      iconColor: "text-focus-text-muted",
+      btnClass: "bg-focus-surface-alt hover:bg-focus-border shadow-none text-focus-text-muted",
+      btnText: "Study Again",
+    },
+  };
+
+  const renderSection = (items, status) => {
+    if (items.length === 0) return null;
+    const cfg = statusConfig[status];
+    return (
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-white">{cfg.label}</h3>
+          <span className={`text-sm font-medium ${cfg.badgeColor}`}>
+            {items.length} concept{items.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+        <div className="space-y-3">
+          {items.map((review) => (
+            <div
+              key={review.concept_id}
+              className="bg-focus-surface border border-focus-border rounded-xl p-4 flex items-center justify-between
+                         hover:border-focus-border-light transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${cfg.iconBg}`}>
+                  {status === "due" ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={cfg.iconColor}>
+                      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                    </svg>
+                  ) : status === "new" ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={cfg.iconColor}>
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={cfg.iconColor}>
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-white font-medium">{review.concept_name}</h3>
+                  <p className="text-xs text-focus-text-dim mt-0.5">
+                    {status === "due" && (
+                      <>Review #{review.repetitions + 1} &middot; {Math.round(review.interval_days)} day interval</>
+                    )}
+                    {status === "new" && (
+                      <>Score: {Math.round(review.score)} &middot; Not yet reviewed</>
+                    )}
+                    {status === "upcoming" && review.next_review && (
+                      <>Next review: {new Date(review.next_review).toLocaleDateString()} &middot; {Math.round(review.interval_days)} day interval</>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  navigate(`/?topic=${encodeURIComponent(review.concept_name)}`);
+                }}
+                className={`px-4 py-2 text-white text-sm font-medium rounded-lg
+                           transition-all shadow-lg
+                           opacity-80 group-hover:opacity-100 ${cfg.btnClass}`}
+              >
+                {cfg.btnText}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">Due for Review</h2>
-        <span className="text-sm text-focus-amber font-medium">
-          {reviews.length} concept{reviews.length !== 1 ? "s" : ""} due
-        </span>
-      </div>
-      <div className="space-y-3">
-        {reviews.map((review) => (
-          <div
-            key={review.concept_id}
-            className="bg-focus-surface border border-focus-border rounded-xl p-4 flex items-center justify-between
-                       hover:border-focus-border-light transition-colors group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-orange-400">
-                  <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-white font-medium">{review.concept_name}</h3>
-                <p className="text-xs text-focus-text-dim mt-0.5">
-                  Review #{review.repetitions + 1} &middot; {Math.round(review.interval_days)} day interval
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                navigate(`/?topic=${encodeURIComponent(review.concept_name)}`);
-              }}
-              className="px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg
-                         hover:bg-orange-500 transition-all shadow-lg shadow-orange-900/15
-                         opacity-80 group-hover:opacity-100"
-            >
-              Start Review
-            </button>
-          </div>
-        ))}
-      </div>
+      <h2 className="text-2xl font-bold text-white mb-6">Review</h2>
+      {renderSection(dueItems, "due")}
+      {renderSection(newItems, "new")}
+      {renderSection(upcomingItems, "upcoming")}
     </div>
   );
 }

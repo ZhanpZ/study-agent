@@ -490,7 +490,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         "questions": comprehension_mcqs,
                     })
 
-                # Summary is generated only at session completion to reduce API costs
+                # Summary is generated after every evaluation phase
 
             # Main message loop
             while True:
@@ -737,23 +737,26 @@ async def _handle_post_evaluation(
         "gaps": evaluation.gaps,
     })
 
+    # Update skill and review schedule after every evaluation
+    session_record = await db.get(Session, session_id)
+    if session_record and session_record.concept_id:
+        await update_skill(
+            db, session_record.concept_id,
+            evaluation.score, evaluation.gaps,
+        )
+        await update_review_schedule(
+            db, session_record.concept_id,
+            evaluation.score,
+        )
+        await db.commit()
+
     if state.phase == Phase.COMPLETE:
         await websocket.send_json({
             "type": "phase_change",
             "phase": "complete",
         })
 
-        # Update skill and review schedule
-        session_record = await db.get(Session, session_id)
         if session_record and session_record.concept_id:
-            await update_skill(
-                db, session_record.concept_id,
-                evaluation.score, evaluation.gaps,
-            )
-            await update_review_schedule(
-                db, session_record.concept_id,
-                evaluation.score,
-            )
             session_record.phase = "complete"
             session_record.ended_at = datetime.datetime.utcnow()
             await db.commit()

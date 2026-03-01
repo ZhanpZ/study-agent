@@ -103,22 +103,36 @@ async def update_review_schedule(
 
 
 async def get_due_reviews(db: AsyncSession) -> list[dict]:
-    """Get all concepts due for review."""
+    """Get all concepts with their review status."""
+    from backend.models.tables import SkillScore
+
     now = datetime.datetime.utcnow()
     result = await db.execute(
-        select(ReviewSchedule, Concept)
-        .join(Concept, ReviewSchedule.concept_id == Concept.id)
-        .where(ReviewSchedule.next_review <= now)
-        .order_by(ReviewSchedule.next_review)
+        select(Concept, ReviewSchedule, SkillScore)
+        .outerjoin(ReviewSchedule, ReviewSchedule.concept_id == Concept.id)
+        .outerjoin(SkillScore, SkillScore.concept_id == Concept.id)
+        .order_by(
+            # Due items first (next_review <= now), then new (no schedule), then upcoming
+            (ReviewSchedule.next_review <= now).desc().nulls_last(),
+            ReviewSchedule.next_review.asc().nulls_first(),
+        )
     )
     rows = result.all()
-    return [
-        {
-            "concept_id": schedule.concept_id,
+    items = []
+    for concept, schedule, skill in rows:
+        if schedule is None:
+            status = "new"
+        elif schedule.next_review <= now:
+            status = "due"
+        else:
+            status = "upcoming"
+        items.append({
+            "concept_id": concept.id,
             "concept_name": concept.name,
-            "next_review": schedule.next_review,
-            "interval_days": schedule.interval_days,
-            "repetitions": schedule.repetitions,
-        }
-        for schedule, concept in rows
-    ]
+            "next_review": schedule.next_review if schedule else None,
+            "interval_days": schedule.interval_days if schedule else None,
+            "repetitions": schedule.repetitions if schedule else 0,
+            "status": status,
+            "score": skill.score if skill else 0,
+        })
+    return items
