@@ -2,18 +2,7 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useToast } from "./Toast";
-
-const MODE_BADGE = {
-  concept: "bg-blue-500/15 text-blue-400 border-blue-500/25",
-  industrial: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  leetcode: "bg-amber-500/15 text-amber-400 border-amber-500/25",
-};
-
-const MODE_LABEL = {
-  concept: "Concept",
-  industrial: "Industrial",
-  leetcode: "Leetcode",
-};
+import { MODE_CONFIG } from "../constants/modeConfig";
 
 export default function ConceptDetail({ conceptId, conceptName, score, onClose }) {
   const [sessions, setSessions] = useState([]);
@@ -132,9 +121,9 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium border ${
-                        MODE_BADGE[session.mode] || MODE_BADGE.concept
+                        (MODE_CONFIG[session.mode] || MODE_CONFIG.concept).badgeLight
                       }`}>
-                        {MODE_LABEL[session.mode] || session.mode}
+                        {(MODE_CONFIG[session.mode] || MODE_CONFIG.concept).label}
                       </span>
                       <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium border ${
                         session.phase === "complete"

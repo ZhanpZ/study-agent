@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
+import { ACTIVITY_TYPE } from "../constants/modeConfig";
 
 export default function Dashboard() {
   const [skills, setSkills] = useState([]);
@@ -41,21 +42,24 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       fetch("/api/dashboard/skills").then((r) => r.json()),
       fetch("/api/dashboard/stats").then((r) => r.json()),
       fetch("/api/quiz-history?limit=500").then((r) => r.json()),
       fetch("/api/reviews/due").then((r) => r.json()),
     ])
-      .then(([skillsData, statsData, quizData, reviewData]) => {
-        setSkills(skillsData);
-        setStats(statsData);
-        setQuizHistory(quizData);
-        setReviewsDue(reviewData);
-        setLoading(false);
-      })
-      .catch(() => {
-        addToast("Failed to load dashboard data", "error");
+      .then(([skillsRes, statsRes, quizRes, reviewRes]) => {
+        if (skillsRes.status === "fulfilled") setSkills(skillsRes.value);
+        if (statsRes.status === "fulfilled") setStats(statsRes.value);
+        if (quizRes.status === "fulfilled") setQuizHistory(quizRes.value);
+        if (reviewRes.status === "fulfilled") setReviewsDue(reviewRes.value);
+
+        const failures = [skillsRes, statsRes, quizRes, reviewRes].filter(
+          (r) => r.status === "rejected"
+        );
+        if (failures.length > 0) {
+          addToast("Some dashboard data failed to load", "warning");
+        }
         setLoading(false);
       });
   }, []);
@@ -64,21 +68,25 @@ export default function Dashboard() {
     return <DashboardSkeleton />;
   }
 
-  // Derive section-specific data
-  const algoQuizzes = quizHistory.filter(
-    (q) => q.quiz_type === "algorithm" || q.quiz_type === "constraint"
+  // Derive section-specific data (memoized to avoid recalc on every render)
+  const algoQuizzes = useMemo(
+    () => quizHistory.filter((q) => q.quiz_type === "algorithm" || q.quiz_type === "constraint"),
+    [quizHistory]
   );
-  const mlMathQuizzes = quizHistory.filter((q) => q.quiz_type === "ml_math");
+  const mlMathQuizzes = useMemo(
+    () => quizHistory.filter((q) => q.quiz_type === "ml_math"),
+    [quizHistory]
+  );
 
-  const algoAvg = algoQuizzes.length
-    ? Math.round(
-        algoQuizzes.reduce((s, q) => s + (q.score || 0), 0) / algoQuizzes.length
-      )
-    : null;
-
+  const algoAvg = useMemo(
+    () => algoQuizzes.length
+      ? Math.round(algoQuizzes.reduce((s, q) => s + (q.score || 0), 0) / algoQuizzes.length)
+      : null,
+    [algoQuizzes]
+  );
 
   // Recent activity (last 10 across all types)
-  const recentActivity = quizHistory.slice(0, 10);
+  const recentActivity = useMemo(() => quizHistory.slice(0, 10), [quizHistory]);
 
   return (
     <div className="space-y-6">
@@ -417,11 +425,6 @@ function MiniGauge({ label, value, color, bgColor }) {
   );
 }
 
-const ACTIVITY_TYPE = {
-  algorithm: { label: "Algo Quiz", color: "bg-focus-amber-dim/40 text-focus-amber" },
-  constraint: { label: "Constraint Quiz", color: "bg-blue-900/40 text-blue-400" },
-  ml_math: { label: "ML Math", color: "bg-violet-900/40 text-violet-400" },
-};
 
 function ActivityRow({ entry, onDelete }) {
   const type = ACTIVITY_TYPE[entry.quiz_type] || {

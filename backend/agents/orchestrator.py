@@ -34,11 +34,37 @@ class SessionState:
     code_challenge: dict | None = None  # stored code challenge for evaluation
 
 
+_professor_agent: "Agent | None" = None
+_student_agent: "Agent | None" = None
+_tester_agent: "Agent | None" = None
+
+
+def _get_professor():
+    global _professor_agent
+    if _professor_agent is None:
+        _professor_agent = create_professor_agent()
+    return _professor_agent
+
+
+def _get_student():
+    global _student_agent
+    if _student_agent is None:
+        _student_agent = create_student_agent()
+    return _student_agent
+
+
+def _get_tester():
+    global _tester_agent
+    if _tester_agent is None:
+        _tester_agent = create_tester_agent()
+    return _tester_agent
+
+
 class Orchestrator:
     def __init__(self):
-        self.professor = create_professor_agent()
-        self.student = create_student_agent()
-        self.tester = create_tester_agent()
+        self.professor = _get_professor()
+        self.student = _get_student()
+        self.tester = _get_tester()
 
     def start_session(
         self, topic: str, skill_level: float = 0.0, mode: str = "concept"

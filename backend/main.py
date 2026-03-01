@@ -1,8 +1,9 @@
 import json
+import asyncio
 import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,17 +94,26 @@ async def start_session(body: SessionStart, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/session/{session_id}")
-async def get_session(session_id: int, db: AsyncSession = Depends(get_db)):
+async def get_session(
+    session_id: int,
+    limit: int = 200,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
     if not session:
-        return {"error": "Session not found"}
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    # Get messages
+    # Get messages (paginated, default last 200)
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
     msg_result = await db.execute(
         select(Message)
         .where(Message.session_id == session_id)
         .order_by(Message.timestamp)
+        .offset(offset)
+        .limit(limit)
     )
     messages = msg_result.scalars().all()
 
@@ -123,16 +133,25 @@ async def get_session(session_id: int, db: AsyncSession = Depends(get_db)):
 async def get_session_summary(session_id: int, db: AsyncSession = Depends(get_db)):
     session = await db.get(Session, session_id)
     if not session:
-        return {"error": "Session not found"}
+        raise HTTPException(status_code=404, detail="Session not found")
     return {"summary": session.summary, "mode": session.mode}
 
 
 @app.get("/api/concepts/{concept_id}/sessions")
-async def get_concept_sessions(concept_id: int, db: AsyncSession = Depends(get_db)):
+async def get_concept_sessions(
+    concept_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     result = await db.execute(
         select(Session)
         .where(Session.concept_id == concept_id)
         .order_by(Session.started_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
     sessions = result.scalars().all()
     return [
@@ -169,7 +188,7 @@ async def merge_concepts(body: ConceptMerge, db: AsyncSession = Depends(get_db))
     target = await db.get(Concept, body.target_id)
     source = await db.get(Concept, body.source_id)
     if not target or not source:
-        return {"error": "Concept not found"}
+        raise HTTPException(status_code=404, detail="Concept not found")
 
     # Move all sessions from source to target
     sessions_result = await db.execute(
@@ -290,7 +309,7 @@ async def delete_quiz_history(entry_id: int, db: AsyncSession = Depends(get_db))
     """Delete a single quiz history entry."""
     entry = await db.get(QuizHistory, entry_id)
     if not entry:
-        return {"error": "Entry not found"}
+        raise HTTPException(status_code=404, detail="Entry not found")
     await db.delete(entry)
     await db.commit()
     return {"status": "deleted", "id": entry_id}
@@ -301,7 +320,7 @@ async def delete_concept(concept_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a concept and all its associated data (skills, reviews, sessions, messages)."""
     concept = await db.get(Concept, concept_id)
     if not concept:
-        return {"error": "Concept not found"}
+        raise HTTPException(status_code=404, detail="Concept not found")
 
     # Batch delete: get all session IDs, then delete messages and sessions in bulk
     sessions_result = await db.execute(
@@ -398,7 +417,7 @@ async def delete_quiz_feedback(entry_id: int, db: AsyncSession = Depends(get_db)
     """Delete a quiz feedback entry."""
     entry = await db.get(QuizFeedback, entry_id)
     if not entry:
-        return {"error": "Entry not found"}
+        raise HTTPException(status_code=404, detail="Entry not found")
     await db.delete(entry)
     await db.commit()
     return {"status": "deleted", "id": entry_id}
@@ -496,6 +515,11 @@ async def websocket_session(websocket: WebSocket, session_id: int):
             while True:
                 data = await websocket.receive_text()
                 msg = json.loads(data)
+
+                # Heartbeat: respond to pings immediately
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
 
                 if msg.get("type") == "ready_to_teach":
                     # User clicked "Ready to Teach" / "Ready for Challenge"
@@ -613,12 +637,11 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 elif msg.get("type") == "message":
                     user_content = msg["content"]
 
-                    # Save user message
+                    # Save user message (batched with response below)
                     db.add(Message(
                         session_id=session_id, role="user",
                         agent="user", content=user_content,
                     ))
-                    await db.commit()
 
                     # Process through orchestrator
                     response, agent_name, state = orchestrator.process_message(
@@ -628,6 +651,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
                     # Check for special response types (MCQ, code challenge)
                     if response == "__MCQ__":
+                        await db.commit()  # persist user message
                         await websocket.send_json({
                             "type": "mcq",
                             "questions": state.mcq_questions,
@@ -639,6 +663,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         continue
 
                     if response == "__CODE_CHALLENGE__":
+                        await db.commit()  # persist user message
                         challenge_msg = {
                             "type": "code_challenge",
                             "problem": state.code_challenge.get("problem", ""),
@@ -686,13 +711,16 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         )
 
         except WebSocketDisconnect:
-            # Clean up on disconnect
-            if session_id in active_sessions:
-                # Update session phase in DB
+            # Clean up on disconnect — always remove from active_sessions
+            try:
                 session_record = await db.get(Session, session_id)
                 if session_record:
                     session_record.phase = state.phase.value
                     await db.commit()
+            except Exception:
+                pass  # Best-effort DB save on disconnect
+            finally:
+                active_sessions.pop(session_id, None)
 
 
 async def _update_summary(

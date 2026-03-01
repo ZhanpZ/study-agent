@@ -9,9 +9,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./study.db")
 
 # ─── Model Configuration ─────────────────────────────────────────
 # String aliases (used by professor, student, tester agents)
-MODEL_STRONG = "gpt-4o"
-MODEL_PROFESSOR = "gpt-4o"
-MODEL_FAST = "gpt-4o-mini"
+MODEL_STRONG = "gpt-4o"            # evaluations, MCQ generation (accuracy-critical)
+MODEL_PROFESSOR = "gpt-4o-mini"    # explanations & follow-ups (cost-optimized, quality sufficient)
+MODEL_FAST = "gpt-4o-mini"         # student agent, simple tasks
 
 # LLM objects with explicit temperature (used by quiz generation)
 LLM_QUIZ = LLM(model="gpt-4o", temperature=0.3)           # algorithm & constraint quizzes

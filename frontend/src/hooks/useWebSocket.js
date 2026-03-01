@@ -37,6 +37,12 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const [connectionStatus, setConnectionStatus] = useState("disconnected"); // disconnected | connecting | connected | reconnecting
   const [phaseTransition, setPhaseTransition] = useState(null);
   const prevSessionIdRef = useRef(sessionId);
+  const phaseRef = useRef(phase);
+
+  // Keep phaseRef in sync with phase state
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef(null);
@@ -97,21 +103,19 @@ export default function useWebSocket(sessionId, initialMessages = []) {
             { agent: data.agent, content: data.content, phase: data.phase },
           ]);
           if (data.phase) {
-            const prevPhase = phase;
-            setPhase(data.phase);
-            if (data.phase !== prevPhase) {
-              showPhaseTransition(data.phase);
-            }
+            setPhase((prev) => {
+              if (data.phase !== prev) showPhaseTransition(data.phase);
+              return data.phase;
+            });
           }
           break;
 
         case "phase_change": {
-          const prevPhase = phase;
-          setPhase(data.phase);
+          setPhase((prev) => {
+            if (data.phase !== prev) showPhaseTransition(data.phase);
+            return data.phase;
+          });
           setThinking(false);
-          if (data.phase !== prevPhase) {
-            showPhaseTransition(data.phase);
-          }
           // Clear comprehension MCQs when leaving explain phases
           if (data.phase !== "explain" && data.phase !== "explain_done") {
             setComprehensionMcqs([]);

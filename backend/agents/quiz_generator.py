@@ -4,6 +4,7 @@ import math
 import logging
 from crewai import Agent, Task, LLM
 from backend.config import LLM_QUIZ, LLM_MATH, LLM_VERIFY
+from backend.utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -256,19 +257,21 @@ def _verify_algorithm_questions(questions: list[dict]) -> list[dict]:
                 agent=agent,
             )
             result = str(agent.execute_task(task))
-            data = json.loads(result[result.index("{"):result.rindex("}") + 1])
-            verifier_answer = data.get("correct", "").strip().upper()
+            data = extract_json(result)
+            if data and isinstance(data, dict):
+                verifier_answer = data.get("correct", "").strip().upper()
 
-            if verifier_answer and verifier_answer == q.get("correct", "").strip().upper():
-                q["verified"] = True
-                verified.append(q)
+                if verifier_answer and verifier_answer == q.get("correct", "").strip().upper():
+                    q["verified"] = True
+                else:
+                    logger.warning(
+                        "Verification mismatch: generated=%s verifier=%s | problem: %s",
+                        q.get("correct"), verifier_answer, q.get("problem", "")[:80],
+                    )
+                    q["verified"] = False
             else:
-                logger.warning(
-                    "Verification mismatch: generated=%s verifier=%s | problem: %s",
-                    q.get("correct"), verifier_answer, q.get("problem", "")[:80],
-                )
                 q["verified"] = False
-                verified.append(q)
+            verified.append(q)
         except Exception as e:
             logger.warning("Verification failed for question: %s", e)
             q["verified"] = False
@@ -302,7 +305,11 @@ def _verify_constraint_questions(questions: list[dict]) -> list[dict]:
                 agent=agent,
             )
             result = str(agent.execute_task(task))
-            data = json.loads(result[result.index("{"):result.rindex("}") + 1])
+            data = extract_json(result)
+            if not data or not isinstance(data, dict):
+                q["verified"] = False
+                verified.append(q)
+                continue
             verifier_answers = set(l.strip().upper() for l in data.get("correct", []))
             generated_answers = set(l.strip().upper() for l in q.get("correct", []))
 
@@ -351,7 +358,10 @@ def _verify_ml_math(question: dict) -> dict:
                 agent=agent,
             )
             result = str(agent.execute_task(task))
-            data = json.loads(result[result.index("{"):result.rindex("}") + 1])
+            data = extract_json(result)
+            if not data or not isinstance(data, dict):
+                question[f"{part_key}_verified"] = False
+                continue
             verifier_answer = data.get("correct", "").strip().upper()
             generated_answer = part.get("correct", "").strip().upper()
 
@@ -620,14 +630,11 @@ def generate_algorithm_quiz(
     )
     result = str(agent.execute_task(task))
 
-    try:
-        json_start = result.index("{")
-        json_end = result.rindex("}") + 1
-        data = json.loads(result[json_start:json_end])
-        questions = data.get("questions", [])
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning("Failed to parse algorithm quiz JSON: %s | raw: %s", e, result[:200])
+    data = extract_json(result)
+    if not data or not isinstance(data, dict):
+        logger.warning("Failed to parse algorithm quiz JSON | raw: %s", result[:200])
         return []
+    questions = data.get("questions", [])
 
     # Self-verification pass (Idea 3)
     questions = _verify_algorithm_questions(questions)
@@ -731,14 +738,11 @@ def generate_constraint_quiz(
     )
     result = str(agent.execute_task(task))
 
-    try:
-        json_start = result.index("{")
-        json_end = result.rindex("}") + 1
-        data = json.loads(result[json_start:json_end])
-        questions = data.get("questions", [])
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning("Failed to parse constraint quiz JSON: %s | raw: %s", e, result[:200])
+    data = extract_json(result)
+    if not data or not isinstance(data, dict):
+        logger.warning("Failed to parse constraint quiz JSON | raw: %s", result[:200])
         return []
+    questions = data.get("questions", [])
 
     # Deterministic constraint validation (Idea 6)
     questions = _validate_constraint_answers(questions)
@@ -828,12 +832,9 @@ def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
     )
     result = str(agent.execute_task(task))
 
-    try:
-        json_start = result.index("{")
-        json_end = result.rindex("}") + 1
-        question = json.loads(result[json_start:json_end])
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning("Failed to parse ML math question JSON: %s | raw: %s", e, result[:200])
+    question = extract_json(result)
+    if not question or not isinstance(question, dict):
+        logger.warning("Failed to parse ML math question JSON | raw: %s", result[:200])
         return {}
 
     # Self-verification pass (Idea 3)

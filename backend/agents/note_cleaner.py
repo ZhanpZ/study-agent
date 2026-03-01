@@ -1,6 +1,6 @@
-import json
 from crewai import Agent, Task
 from backend.config import MODEL_STRONG
+from backend.utils import extract_json
 
 
 def create_note_cleaner_agent() -> Agent:
@@ -51,7 +51,7 @@ def clean_note(agent: Agent, raw_text: str) -> dict:
     )
     result = str(agent.execute_task(task))
 
-    # Parse JSON from response
-    json_start = result.index("{")
-    json_end = result.rindex("}") + 1
-    return json.loads(result[json_start:json_end])
+    data = extract_json(result)
+    if data and isinstance(data, dict):
+        return data
+    return {"topic": "Untitled Note", "cleaned_note": result}

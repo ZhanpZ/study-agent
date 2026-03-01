@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Study from "./pages/Study";
-import Review from "./pages/Review";
-import Dashboard from "./pages/Dashboard";
-import AlgorithmQuiz from "./pages/AlgorithmQuiz";
-import Notes from "./pages/Notes";
 import PomodoroTimer from "./components/PomodoroTimer";
+
+// Lazy-load heavy pages to reduce initial bundle size
+const Review = lazy(() => import("./pages/Review"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AlgorithmQuiz = lazy(() => import("./pages/AlgorithmQuiz"));
+const Notes = lazy(() => import("./pages/Notes"));
 
 const NAV_ITEMS = [
   { path: "/", label: "Study", icon: "\u{1F4D6}" },
@@ -87,13 +89,15 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
-        <Routes>
-          <Route path="/" element={<Study />} />
-          <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
-          <Route path="/notes" element={<Notes />} />
-          <Route path="/review" element={<Review />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-        </Routes>
+        <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh] text-focus-text-muted">Loading...</div>}>
+          <Routes>
+            <Route path="/" element={<Study />} />
+            <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
+            <Route path="/notes" element={<Notes />} />
+            <Route path="/review" element={<Review />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );

@@ -45,7 +45,7 @@ export default function Chat({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, mcqQuestions, codeChallenge, thinking]);
+  }, [messages.length, mcqQuestions, codeChallenge, thinking]);
 
   useEffect(() => {
     if (!thinking) setSubmittingCode(false);
