@@ -97,6 +97,18 @@ class QuizHistorySave(BaseModel):
         return v
 
 
+class NoteCleanRequest(BaseModel):
+    raw_text: str = Field(..., min_length=1, max_length=10000)
+
+    @field_validator("raw_text")
+    @classmethod
+    def validate_raw_text(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("raw_text must not be empty")
+        return v
+
+
 class QuizFeedbackCreate(BaseModel):
     quiz_type: str = Field(..., max_length=30)
     question_data: dict = Field(default_factory=dict)

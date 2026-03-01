@@ -5,12 +5,14 @@ import Review from "./pages/Review";
 import Dashboard from "./pages/Dashboard";
 import AlgorithmQuiz from "./pages/AlgorithmQuiz";
 import MLMathDrill from "./pages/MLMathDrill";
+import Notes from "./pages/Notes";
 import PomodoroTimer from "./components/PomodoroTimer";
 
 const NAV_ITEMS = [
   { path: "/", label: "Study", icon: "\u{1F4D6}" },
   { path: "/algorithm-quiz", label: "Algo Quiz", icon: "\u{1F9E9}" },
   { path: "/ml-math", label: "ML Math(TBC)", icon: "\u{1F4D0}" },
+  { path: "/notes", label: "Notes", icon: "\u{1F4DD}" },
   { path: "/review", label: "Review", icon: "\u{1F504}" },
   { path: "/dashboard", label: "Dashboard", icon: "\u{1F4CA}" },
 ];
@@ -91,6 +93,7 @@ export default function App() {
           <Route path="/" element={<Study />} />
           <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
           <Route path="/ml-math" element={<MLMathDrill />} />
+          <Route path="/notes" element={<Notes />} />
           <Route path="/review" element={<Review />} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Routes>

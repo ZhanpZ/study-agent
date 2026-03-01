@@ -11,7 +11,7 @@ from backend.models.database import init_db, get_db
 from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory, QuizFeedback
 from backend.models.schemas import (
     SessionStart, SessionResponse, SkillResponse, ReviewDue, StatsResponse, WSMessage,
-    ConceptMerge, QuizHistorySave, QuizFeedbackCreate,
+    ConceptMerge, QuizHistorySave, QuizFeedbackCreate, NoteCleanRequest,
 )
 from backend.agents.orchestrator import Orchestrator, Phase
 from backend.agents.professor import generate_summary
@@ -20,6 +20,7 @@ from backend.agents.quiz_generator import (
     create_quiz_agent, generate_algorithm_quiz, generate_constraint_quiz,
     create_ml_math_agent, generate_ml_math_question,
 )
+from backend.agents.note_cleaner import create_note_cleaner_agent, clean_note
 from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
@@ -224,6 +225,45 @@ async def get_ml_math_question(topic: str = "all"):
     agent = create_ml_math_agent()
     question = generate_ml_math_question(agent, topic=topic)
     return {"question": question}
+
+
+# ─── Note Cleanup Endpoint ───────────────────────────────────────
+
+
+@app.post("/api/notes/clean-and-save")
+async def clean_and_save_note(body: NoteCleanRequest, db: AsyncSession = Depends(get_db)):
+    """Clean up messy notes using AI, save as a concept for spaced repetition review."""
+    # Clean the note via AI agent
+    agent = create_note_cleaner_agent()
+    result = clean_note(agent, body.raw_text)
+    topic = result["topic"]
+    cleaned_note = result["cleaned_note"]
+
+    # Find existing concept or create new one
+    concept = await find_matching_concept(db, topic)
+    if concept is None:
+        concept = Concept(name=topic, description=cleaned_note)
+        db.add(concept)
+        await db.commit()
+        await db.refresh(concept)
+    else:
+        # Append to existing description
+        if concept.description:
+            concept.description += "\n\n---\n\n" + cleaned_note
+        else:
+            concept.description = cleaned_note
+        await db.commit()
+
+    # Ensure skill and review schedule exist
+    await get_or_create_skill(db, concept.id)
+    schedule = await update_review_schedule(db, concept.id, 0)
+
+    return {
+        "concept_id": concept.id,
+        "topic": concept.name,
+        "cleaned_note": cleaned_note,
+        "next_review": schedule.next_review.isoformat() if schedule.next_review else None,
+    }
 
 
 # ─── Quiz History Endpoints ──────────────────────────────────────
