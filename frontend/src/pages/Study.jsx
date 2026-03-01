@@ -204,6 +204,14 @@ export default function Study() {
               value={topic}
               onChange={handleTopicChange}
               onBlur={() => topic.trim() && setTopicError(validateTopic(topic.trim()))}
+              onFocus={(e) => {
+                const el = e.target;
+                const len = el.value.length;
+                requestAnimationFrame(() => {
+                  el.selectionStart = el.selectionEnd = len;
+                  el.scrollLeft = el.scrollWidth;
+                });
+              }}
               placeholder={cfg.placeholder}
               maxLength={MAX_TOPIC_LENGTH}
               className={`w-full bg-focus-surface border rounded-xl px-4 py-3.5 pr-24 text-sm
