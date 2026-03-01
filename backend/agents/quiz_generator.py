@@ -99,7 +99,7 @@ ALGORITHM REFERENCE (use this to ensure correct answers):
 - Dynamic Programming: overlapping subproblems + optimal substructure
 - Greedy: locally optimal choices, interval scheduling, Huffman
 - Backtracking: constraint satisfaction, permutations, N-Queens
-- Union-Find: connected components, cycle detection in undirected graphs
+- Union-Find: connected components, cycle detection in undirected graphs, O(n α(n)) ≈ O(n)
 - Topological Sort: DAG ordering, prerequisite scheduling, O(V+E)
 - Monotonic Stack: next greater/smaller element, histogram problems, O(n)
 - Trie: prefix matching, autocomplete, word search
@@ -384,6 +384,7 @@ _COMPLEXITY_PATTERNS = [
     (r"O\(n\^4\)|O\(n⁴\)", lambda n: n ** 4),
     (r"O\(2\^n\)", lambda n: 2 ** n),
     (r"O\(n!\)", lambda n: math.factorial(min(int(n), 20))),
+    (r"O\(n\s*[αα]\s*\(n\)\)", lambda n: n),  # inverse Ackermann ≈ O(n)
     (r"O\(V\+E\)|O\(V\s*\+\s*E\)", lambda n: 2 * n),  # approx V+E ~ 2n
     (r"O\(E\s*log\s*V\)", lambda n: n * math.log2(n) if n > 0 else 0),
     (r"O\(VE\)|O\(V\s*\*?\s*E\)", lambda n: n * n),  # worst case V*E ~ n^2
@@ -419,9 +420,20 @@ def _parse_max_n(constraints_str: str) -> float | None:
 
 
 def _extract_complexity(option_str: str) -> str | None:
-    """Extract O(...) complexity from an option string."""
-    match = re.search(r"O\([^)]+\)", option_str)
-    return match.group() if match else None
+    """Extract O(...) complexity from an option string, handling nested parens like O(n α(n))."""
+    # Find 'O(' then match balanced parentheses
+    start = option_str.find("O(")
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start + 1, len(option_str)):
+        if option_str[i] == "(":
+            depth += 1
+        elif option_str[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return option_str[start:i + 1]
+    return None
 
 
 def _is_feasible(complexity_str: str, n: float) -> bool | None:
@@ -446,17 +458,24 @@ def _validate_constraint_answers(questions: list[dict]) -> list[dict]:
         validated_correct = []
         for option in q.get("options", []):
             letter = option[0] if option else ""
+            if letter not in q.get("correct", []):
+                continue  # not marked correct by LLM — skip
             complexity = _extract_complexity(option)
             if complexity is None:
-                continue  # can't parse — keep LLM answer
+                # Can't parse complexity — trust LLM answer
+                validated_correct.append(letter)
+                continue
             feasible = _is_feasible(complexity, max_n)
             if feasible is None:
-                continue  # unknown pattern
-            # Only include if both feasible AND the LLM originally marked it correct
-            # (feasibility alone doesn't mean it solves the problem type)
-            if feasible and letter in q.get("correct", []):
+                # Unknown complexity pattern — trust LLM answer
+                logger.info(
+                    "Constraint validation: unknown pattern %s for %s — keeping LLM answer",
+                    complexity, letter,
+                )
                 validated_correct.append(letter)
-            elif not feasible and letter in q.get("correct", []):
+            elif feasible:
+                validated_correct.append(letter)
+            else:
                 logger.info(
                     "Constraint validation: removing %s (%s) — too slow for n=%s",
                     letter, complexity, max_n,

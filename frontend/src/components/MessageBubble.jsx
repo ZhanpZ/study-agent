@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import CodeBlock from "./CodeBlock";
 
 const AGENT_STYLES = {
   professor: {
@@ -76,7 +77,15 @@ export default function MessageBubble({ agent, content }) {
                           prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
                           prose-strong:text-gray-100 prose-a:text-indigo-400
                           prose-blockquote:border-l-focus-teal prose-blockquote:text-gray-300">
-            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                code: CodeBlock,
+              }}
+            >
+              {content}
+            </ReactMarkdown>
           </div>
         )}
       </div>

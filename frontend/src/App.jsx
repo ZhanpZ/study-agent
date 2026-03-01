@@ -24,7 +24,7 @@ export default function App() {
       {/* Header */}
       <header className="border-b border-focus-border bg-focus-bg-alt">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-focus-text">Study Agent</h1>
+          <Link to="/" className="text-xl font-bold text-focus-text hover:text-focus-accent transition-colors">Study Agent</Link>
 
           {/* Mobile menu button */}
           <button

@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import CodeBlock from "./CodeBlock";
 
 export default function Chat({
   messages, phase, score, gaps, connected, mode,
@@ -20,6 +21,16 @@ export default function Chat({
   const [submittingCode, setSubmittingCode] = useState(false);
   const messagesEndRef = useRef(null);
   const codeTextareaRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const handleInputFocus = (e) => {
+    const el = e.target;
+    const len = el.value.length;
+    requestAnimationFrame(() => {
+      el.selectionStart = el.selectionEnd = len;
+      el.scrollLeft = el.scrollWidth;
+    });
+  };
   const isLeetcode = mode === "leetcode";
   const isTeachPhase = phase === "teach";
   const isExplainDone = phase === "explain_done";
@@ -148,7 +159,7 @@ export default function Chat({
                           prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
                           prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
                           prose-strong:text-gray-100 prose-a:text-indigo-400 max-h-80 overflow-y-auto">
-            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]} components={{ code: CodeBlock }}>
               {summary}
             </ReactMarkdown>
           </div>
@@ -245,8 +256,10 @@ export default function Chat({
           <form onSubmit={handleSubmit} className="flex gap-2">
             {isCodeMode && isTeachPhase ? (
               <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onFocus={handleInputFocus}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -262,9 +275,11 @@ export default function Chat({
               />
             ) : (
               <input
+                ref={inputRef}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onFocus={handleInputFocus}
                 placeholder={
                   isExplainDone
                     ? "Ask the professor a follow-up question..."
@@ -360,7 +375,7 @@ function CodeChallengePanel({
                         prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
                         prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
                         prose-strong:text-gray-100 max-h-80 overflow-y-auto">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
             {challenge.problem}
           </ReactMarkdown>
         </div>
