@@ -145,6 +145,12 @@ export default function Study() {
     setInitialMessages([]);
     setRestoredPhase(null);
     hasRestored.current = false;
+    // Clear persisted WebSocket state from previous session
+    sessionStorage.removeItem("ws_mcqQuestions");
+    sessionStorage.removeItem("ws_codeChallenge");
+    sessionStorage.removeItem("ws_summary");
+    sessionStorage.removeItem("ws_comprehensionMcqs");
+    sessionStorage.removeItem("ws_sessionId");
   };
 
   // Topic selection screen

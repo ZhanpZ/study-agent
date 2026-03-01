@@ -17,17 +17,51 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const [score, setScore] = useState(null);
   const [gaps, setGaps] = useState([]);
   const [connected, setConnected] = useState(false);
-  const [mcqQuestions, setMcqQuestions] = useState(() => loadSessionState("ws_mcqQuestions", null));
-  const [codeChallenge, setCodeChallenge] = useState(() => loadSessionState("ws_codeChallenge", null));
-  const [summary, setSummary] = useState(() => loadSessionState("ws_summary", null));
-  const [comprehensionMcqs, setComprehensionMcqs] = useState(() => loadSessionState("ws_comprehensionMcqs", []));
+  const [mcqQuestions, setMcqQuestions] = useState(() => {
+    const storedId = loadSessionState("ws_sessionId", null);
+    return storedId === sessionId ? loadSessionState("ws_mcqQuestions", null) : null;
+  });
+  const [codeChallenge, setCodeChallenge] = useState(() => {
+    const storedId = loadSessionState("ws_sessionId", null);
+    return storedId === sessionId ? loadSessionState("ws_codeChallenge", null) : null;
+  });
+  const [summary, setSummary] = useState(() => {
+    const storedId = loadSessionState("ws_sessionId", null);
+    return storedId === sessionId ? loadSessionState("ws_summary", null) : null;
+  });
+  const [comprehensionMcqs, setComprehensionMcqs] = useState(() => {
+    const storedId = loadSessionState("ws_sessionId", null);
+    return storedId === sessionId ? loadSessionState("ws_comprehensionMcqs", []) : [];
+  });
   const [thinking, setThinking] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("disconnected"); // disconnected | connecting | connected | reconnecting
   const [phaseTransition, setPhaseTransition] = useState(null);
+  const prevSessionIdRef = useRef(sessionId);
 
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef(null);
   const maxReconnectAttempts = 5;
+
+  // Reset ws state when sessionId changes (new session)
+  useEffect(() => {
+    if (sessionId && sessionId !== prevSessionIdRef.current) {
+      setMcqQuestions(null);
+      setCodeChallenge(null);
+      setSummary(null);
+      setComprehensionMcqs([]);
+      setPhase("explain");
+      setScore(null);
+      setGaps([]);
+      sessionStorage.removeItem("ws_mcqQuestions");
+      sessionStorage.removeItem("ws_codeChallenge");
+      sessionStorage.removeItem("ws_summary");
+      sessionStorage.removeItem("ws_comprehensionMcqs");
+    }
+    if (sessionId) {
+      persistSessionState("ws_sessionId", sessionId);
+    }
+    prevSessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   // Sync initialMessages when they arrive from session restore
   useEffect(() => {
