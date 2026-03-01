@@ -520,6 +520,11 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                                 await websocket.send_json({
                                     "type": "phase_change", "phase": "evaluate",
                                 })
+                            # Persist phase to DB
+                            session_record = await db.get(Session, session_id)
+                            if session_record:
+                                session_record.phase = state.phase.value
+                                await db.commit()
                             continue
 
                         state = orchestrator.transition_to_teach(state)
@@ -535,12 +540,23 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                             session_id=session_id, role="assistant",
                             agent=agent_name, content=prompt,
                         ))
+                        # Persist phase to DB
+                        session_record = await db.get(Session, session_id)
+                        if session_record:
+                            session_record.phase = state.phase.value
                         await db.commit()
 
                         await websocket.send_json({
                             "type": "message",
                             "agent": agent_name,
                             "content": prompt,
+                            "phase": state.phase.value,
+                        })
+                    else:
+                        # Phase already transitioned (e.g. duplicate click) —
+                        # re-send current phase so frontend exits "thinking" state
+                        await websocket.send_json({
+                            "type": "phase_change",
                             "phase": state.phase.value,
                         })
 

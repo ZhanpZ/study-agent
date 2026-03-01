@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
-import { deriveMlMathStats } from "../utils/statsHelpers";
 
 export default function Dashboard() {
   const [skills, setSkills] = useState([]);
@@ -77,7 +76,6 @@ export default function Dashboard() {
       )
     : null;
 
-  const mlMathStats = deriveMlMathStats(mlMathQuizzes);
 
   // Recent activity (last 10 across all types)
   const recentActivity = quizHistory.slice(0, 10);
@@ -282,57 +280,6 @@ export default function Dashboard() {
           )}
         </SectionCard>
 
-        {/* ML Math Section */}
-        <SectionCard
-          title="ML Math Drills"
-          icon={"\u{1F4D0}"}
-          accentColor="violet"
-          linkTo="/ml-math"
-          linkLabel="Practice math"
-        >
-          {mlMathQuizzes.length === 0 ? (
-            <EmptyState text="No drills completed yet" />
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-focus-text-muted">
-                <span>{mlMathQuizzes.length} drills completed</span>
-              </div>
-              {/* Math & Proof accuracy */}
-              <div className="grid grid-cols-2 gap-3">
-                <MiniGauge
-                  label="Math"
-                  value={mlMathStats.mathPct}
-                  color="text-violet-400"
-                  bgColor="bg-violet-400"
-                />
-                <MiniGauge
-                  label="Proof"
-                  value={mlMathStats.proofPct}
-                  color="text-blue-400"
-                  bgColor="bg-blue-400"
-                />
-              </div>
-              {/* Topics practiced */}
-              {mlMathStats.topics.length > 0 && (
-                <div className="pt-2 border-t border-focus-border">
-                  <p className="text-xs text-focus-text-dim mb-1">
-                    Topics covered
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {mlMathStats.topics.slice(0, 4).map((t) => (
-                      <span
-                        key={t}
-                        className="text-xs px-2 py-0.5 bg-violet-900/30 text-violet-300 rounded"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </SectionCard>
 
         {/* Review Section */}
         <SectionCard

@@ -97,6 +97,14 @@ export default function Study() {
     sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
   } = useWebSocket(sessionId, initialMessages);
 
+  // Clear restoredPhase once the WebSocket sends a real phase update
+  // (restoredPhase is only needed to bridge the gap before WS connects)
+  useEffect(() => {
+    if (restoredPhase !== null && phase !== "explain") {
+      setRestoredPhase(null);
+    }
+  }, [phase, restoredPhase]);
+
   const activePhase = restoredPhase || phase;
   const activeMode = sessionMode || mode;
 
