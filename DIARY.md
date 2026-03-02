@@ -13,3 +13,11 @@
 - `frontend/src/hooks/useWebSocket.js` — Added `isNew` flag to WebSocket messages to distinguish live vs restored messages
 
 **Context:** The app displayed content instantly with minimal motion. Adding micro-interactions (typewriter streaming, button feedback, phase pulse, score animations, MCQ selection/reveal effects) keeps the user's attention engaged during study sessions. All animations are pure CSS + minimal React state — no external libraries added.
+
+## 2026-03-02
+**Task:** Fixed startup crash caused by missing `deleted_at` column in existing SQLite database.
+
+**Files Changed:**
+- `study.db` — Added `deleted_at DATETIME` column to `concepts` table via ALTER TABLE.
+
+**Context:** A previous edit added `deleted_at` to the `Concept` SQLAlchemy model (soft-delete support) but the existing `study.db` was never migrated. The app crashed on startup because SQLAlchemy queried for a column that didn't exist in the database.
