@@ -2,6 +2,7 @@ import { useState } from "react";
 
 export default function MCQPanel({ questions, onSubmit }) {
   const [answers, setAnswers] = useState(Array(questions.length).fill(""));
+  const [justSelected, setJustSelected] = useState(null);
 
   const handleSelect = (questionIdx, option) => {
     const letter = option.charAt(0);
@@ -10,6 +11,9 @@ export default function MCQPanel({ questions, onSubmit }) {
       next[questionIdx] = letter;
       return next;
     });
+    // Trigger select animation
+    setJustSelected({ qIdx: questionIdx, oIdx: option });
+    setTimeout(() => setJustSelected(null), 200);
   };
 
   const allAnswered = answers.every((a) => a !== "");
@@ -22,7 +26,7 @@ export default function MCQPanel({ questions, onSubmit }) {
   };
 
   return (
-    <div className="bg-focus-surface border border-focus-border rounded-xl overflow-hidden">
+    <div className="bg-focus-surface border border-focus-border rounded-xl overflow-hidden animate-message-enter">
       {/* Header */}
       <div className="px-5 py-3.5 border-b border-focus-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -50,15 +54,16 @@ export default function MCQPanel({ questions, onSubmit }) {
               {q.options.map((option, oIdx) => {
                 const letter = option.charAt(0);
                 const isSelected = answers[qIdx] === letter;
+                const isJustSelected = justSelected?.qIdx === qIdx && justSelected?.oIdx === option;
                 return (
                   <button
                     key={oIdx}
                     onClick={() => handleSelect(qIdx, option)}
                     className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-all border ${
                       isSelected
-                        ? "bg-indigo-600/25 border-indigo-500/60 text-white ring-1 ring-indigo-500/20"
+                        ? "bg-indigo-600/25 border-indigo-500/60 text-white ring-1 ring-indigo-500/20 shadow-[0_0_8px_rgba(99,102,241,0.15)]"
                         : "bg-gray-900/30 border-focus-border text-gray-300 hover:border-focus-border-light hover:bg-gray-800/40"
-                    }`}
+                    } ${isJustSelected ? "animate-option-select" : ""}`}
                   >
                     <span className={`inline-block w-5 font-mono text-xs mr-1.5 ${isSelected ? "text-indigo-400" : "text-gray-400"}`}>{letter})</span>
                     {option.substring(3)}
@@ -77,7 +82,8 @@ export default function MCQPanel({ questions, onSubmit }) {
           disabled={!allAnswered}
           className="w-full py-3 bg-indigo-600 text-white font-medium rounded-lg
                      hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed
-                     transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2"
+                     transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2
+                     btn-interactive btn-ripple"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

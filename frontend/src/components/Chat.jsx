@@ -23,6 +23,37 @@ export default function Chat({
   const codeTextareaRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Score animation state
+  const [displayedScore, setDisplayedScore] = useState(score || 0);
+  const [scoreGlow, setScoreGlow] = useState(false);
+  const prevScoreRef = useRef(score);
+
+  useEffect(() => {
+    if (score === null || score === prevScoreRef.current) return;
+    // Trigger glow
+    setScoreGlow(true);
+    const glowTimer = setTimeout(() => setScoreGlow(false), 1000);
+    // Count up animation
+    const start = displayedScore;
+    const end = Math.round(score);
+    const diff = end - start;
+    if (diff !== 0) {
+      const steps = Math.abs(diff);
+      const stepTime = Math.max(Math.floor(500 / steps), 16);
+      const increment = diff > 0 ? 1 : -1;
+      let current = start;
+      const interval = setInterval(() => {
+        current += increment;
+        setDisplayedScore(current);
+        if (current === end) clearInterval(interval);
+      }, stepTime);
+      prevScoreRef.current = score;
+      return () => { clearInterval(interval); clearTimeout(glowTimer); };
+    }
+    prevScoreRef.current = score;
+    return () => clearTimeout(glowTimer);
+  }, [score]);
+
   const handleInputFocus = (e) => {
     const el = e.target;
     const len = el.value.length;
@@ -44,7 +75,13 @@ export default function Chat({
     (phase === "explain" || phase === "explain_done");
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const t = setTimeout(() => {
+      const el = messagesEndRef.current;
+      if (!el) return;
+      const container = el.parentElement;
+      container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    }, 50);
+    return () => clearTimeout(t);
   }, [messages.length, mcqQuestions, codeChallenge, thinking]);
 
   useEffect(() => {
@@ -107,7 +144,7 @@ export default function Chat({
 
       {/* Phase transition notification */}
       {phaseTransition && (
-        <div className="mb-3 px-4 py-2.5 bg-indigo-950/80 border border-indigo-800/60 rounded-xl text-xs text-indigo-300 text-center font-medium animate-slide-in">
+        <div className="mb-3 px-4 py-3 bg-indigo-950/80 border border-indigo-800/60 rounded-xl text-sm text-indigo-200 text-center font-semibold animate-slide-in animate-phase-shimmer">
           Entering: {phaseTransition} phase
         </div>
       )}
@@ -120,15 +157,15 @@ export default function Chat({
         <div className="mb-4 p-4 bg-focus-surface rounded-xl border border-focus-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-focus-text-muted uppercase tracking-wide">Understanding Score</span>
-            <span className={`text-lg font-bold ${
+            <span className={`text-lg font-bold tabular-nums ${
               score >= 80 ? "text-green-400" : score >= 50 ? "text-amber-400" : "text-red-400"
-            }`}>{Math.round(score)}</span>
+            }`}>{displayedScore}</span>
           </div>
           <div className="w-full bg-focus-border rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all duration-700 ease-out ${
                 score >= 80 ? "bg-green-500" : score >= 50 ? "bg-amber-500" : "bg-red-500"
-              }`}
+              } ${scoreGlow ? "animate-score-glow" : ""}`}
               style={{ width: `${score}%` }}
             />
           </div>
@@ -180,7 +217,13 @@ export default function Chat({
               </div>
             )}
             {messages.map((msg, idx) => (
-              <MessageBubble key={idx} agent={msg.agent} content={msg.content} />
+              <MessageBubble
+                key={idx}
+                agent={msg.agent}
+                content={msg.content}
+                isLatest={idx === messages.length - 1}
+                isNew={!!msg.isNew}
+              />
             ))}
 
             {/* Thinking indicator */}
@@ -244,7 +287,7 @@ export default function Chat({
             <button
               onClick={onReadyToTeach}
               disabled={thinking}
-              className={`w-full py-3 mb-3 text-white font-medium rounded-xl transition-all disabled:opacity-50 ${
+              className={`w-full py-3 mb-3 text-white font-medium rounded-xl transition-all disabled:opacity-50 btn-interactive btn-ripple ${
                 isLeetcode
                   ? "bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-900/20"
                   : "bg-green-600 hover:bg-green-500 shadow-lg shadow-green-900/20"
@@ -299,7 +342,7 @@ export default function Chat({
               disabled={!canType || !input.trim() || thinking}
               className="px-5 py-3 bg-focus-teal text-white text-sm font-medium rounded-xl
                          hover:bg-focus-teal-light disabled:opacity-40 disabled:cursor-not-allowed
-                         transition-all shadow-lg shadow-focus-teal/10"
+                         transition-all shadow-lg shadow-focus-teal/10 btn-interactive btn-ripple"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -472,7 +515,8 @@ function CodeChallengePanel({
           disabled={!codeInput.trim() || submitting}
           className="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg
                      hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed
-                     transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2"
+                     transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2
+                     btn-interactive btn-ripple"
         >
           {submitting ? (
             <>

@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -47,12 +48,53 @@ const AGENT_STYLES = {
   },
 };
 
-export default function MessageBubble({ agent, content }) {
+const WORDS_PER_TICK = 2;
+const TICK_MS = 30;
+
+export default function MessageBubble({ agent, content, isLatest, isNew }) {
   const style = AGENT_STYLES[agent] || AGENT_STYLES.system;
   const isUser = agent === "user";
 
+  const shouldAnimate = isLatest && isNew && !isUser;
+  const words = useRef(content.split(/(\s+)/));
+  const [wordIndex, setWordIndex] = useState(shouldAnimate ? 0 : words.current.length);
+  const [isAnimating, setIsAnimating] = useState(shouldAnimate);
+
+  // Reset animation when content changes (new message arrives)
+  useEffect(() => {
+    words.current = content.split(/(\s+)/);
+    if (shouldAnimate) {
+      setWordIndex(0);
+      setIsAnimating(true);
+    } else {
+      setWordIndex(words.current.length);
+      setIsAnimating(false);
+    }
+  }, [content, shouldAnimate]);
+
+  // Word-by-word reveal interval
+  useEffect(() => {
+    if (!isAnimating) return;
+    const interval = setInterval(() => {
+      setWordIndex((prev) => {
+        const next = prev + WORDS_PER_TICK;
+        if (next >= words.current.length) {
+          clearInterval(interval);
+          setIsAnimating(false);
+          return words.current.length;
+        }
+        return next;
+      });
+    }, TICK_MS);
+    return () => clearInterval(interval);
+  }, [isAnimating]);
+
+  const displayedContent = isAnimating
+    ? words.current.slice(0, wordIndex).join("")
+    : content;
+
   return (
-    <div className={`flex gap-3 py-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
+    <div className={`flex gap-3 py-2.5 ${isUser ? "flex-row-reverse" : ""} ${isLatest && isNew ? "animate-message-enter" : ""}`}>
       {/* Avatar */}
       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${style.avatarBg}`}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={style.labelColor}>
@@ -84,7 +126,7 @@ export default function MessageBubble({ agent, content }) {
                 code: CodeBlock,
               }}
             >
-              {content}
+              {displayedContent}
             </ReactMarkdown>
           </div>
         )}

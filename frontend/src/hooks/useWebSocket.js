@@ -111,7 +111,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
           setThinking(false);
           setMessages((prev) => [
             ...prev,
-            { agent: data.agent, content: data.content, phase: data.phase },
+            { agent: data.agent, content: data.content, phase: data.phase, isNew: true },
           ]);
           if (data.phase) {
             setPhase((prev) => {
@@ -183,7 +183,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
           setThinking(false);
           setMessages((prev) => [
             ...prev,
-            { agent: "system", content: data.content },
+            { agent: "system", content: data.content, isNew: true },
           ]);
           break;
       }
@@ -224,7 +224,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const sendMessage = useCallback((content) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "message", content }));
-      setMessages((prev) => [...prev, { agent: "user", content }]);
+      setMessages((prev) => [...prev, { agent: "user", content, isNew: true }]);
       setThinking(true);
     }
   }, []);

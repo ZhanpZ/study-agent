@@ -2,10 +2,14 @@ import { useState } from "react";
 
 export default function ComprehensionPanel({ questions }) {
   const [answeredMap, setAnsweredMap] = useState({});
+  const [justAnswered, setJustAnswered] = useState(null);
 
   const handleSelect = (qIdx, letter) => {
     if (answeredMap[qIdx] !== undefined) return;
     setAnsweredMap((prev) => ({ ...prev, [qIdx]: letter }));
+    // Trigger reveal animation
+    setJustAnswered(qIdx);
+    setTimeout(() => setJustAnswered(null), 500);
   };
 
   if (!questions || questions.length === 0) {
@@ -41,6 +45,7 @@ export default function ComprehensionPanel({ questions }) {
         const answered = answeredMap[qIdx] !== undefined;
         const selectedLetter = answeredMap[qIdx];
         const isCorrect = selectedLetter === q.correct;
+        const isJustAnswered = justAnswered === qIdx;
 
         return (
           <div key={qIdx} className="bg-focus-surface border border-focus-border rounded-xl p-3.5">
@@ -68,12 +73,19 @@ export default function ComprehensionPanel({ questions }) {
                   optionClass = "bg-indigo-600/25 border-indigo-500/50 text-white";
                 }
 
+                // Animation classes for reveal
+                let animClass = "";
+                if (answered && isJustAnswered) {
+                  if (isCorrectOption) animClass = "animate-bounce-correct";
+                  else if (isSelected && !isCorrect) animClass = "animate-shake";
+                }
+
                 return (
                   <button
                     key={oIdx}
                     onClick={() => handleSelect(qIdx, letter)}
                     disabled={answered}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all border disabled:cursor-default ${optionClass}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all border disabled:cursor-default ${optionClass} ${animClass}`}
                   >
                     {option}
                   </button>

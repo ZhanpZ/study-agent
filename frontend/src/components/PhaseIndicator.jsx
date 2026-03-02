@@ -1,3 +1,5 @@
+import { useState, useEffect, useRef } from "react";
+
 const ALL_PHASES = [
   { key: "explain", label: "Learn", icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" },
   { key: "teach", label: "Teach", icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
@@ -32,6 +34,19 @@ export default function PhaseIndicator({ currentPhase, mode }) {
   const mappedPhase = PHASE_MAP[currentPhase] || currentPhase;
   const currentIdx = phases.findIndex((p) => p.key === mappedPhase);
 
+  // Track phase transitions for pulse animation
+  const prevPhaseRef = useRef(mappedPhase);
+  const [transitioning, setTransitioning] = useState(false);
+
+  useEffect(() => {
+    if (mappedPhase !== prevPhaseRef.current) {
+      prevPhaseRef.current = mappedPhase;
+      setTransitioning(true);
+      const t = setTimeout(() => setTransitioning(false), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [mappedPhase]);
+
   return (
     <div className="flex items-center mb-5">
       {phases.map((phase, idx) => {
@@ -50,7 +65,7 @@ export default function PhaseIndicator({ currentPhase, mode }) {
                     : isDone
                     ? `${c.fill} ${c.text} border ${c.border}`
                     : "bg-focus-surface text-gray-600 border border-focus-border"
-                }`}
+                } ${isCurrent && transitioning ? "animate-phase-pulse" : ""}`}
               >
                 {isDone ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
