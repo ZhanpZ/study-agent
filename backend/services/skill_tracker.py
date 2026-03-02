@@ -26,8 +26,12 @@ async def update_skill(
     concept_id: int,
     new_score: float,
     gaps: list[str],
+    auto_commit: bool = True,
 ) -> SkillScore:
-    """Update skill score after a tester evaluation."""
+    """Update skill score after a tester evaluation.
+
+    Set auto_commit=False to batch with other updates in a single transaction.
+    """
     skill = await get_or_create_skill(db, concept_id)
 
     # Blend old and new score (weighted moving average)
@@ -44,8 +48,9 @@ async def update_skill(
     all_gaps = list(dict.fromkeys(gaps + existing))[:10]  # keep last 10 unique gaps
     skill.misconceptions = all_gaps
 
-    await db.commit()
-    await db.refresh(skill)
+    if auto_commit:
+        await db.commit()
+        await db.refresh(skill)
     return skill
 
 
@@ -54,6 +59,7 @@ async def get_all_skills(db: AsyncSession) -> list[dict]:
     result = await db.execute(
         select(SkillScore, Concept)
         .join(Concept, SkillScore.concept_id == Concept.id)
+        .where(Concept.deleted_at.is_(None))
         .order_by(SkillScore.score.desc())
     )
     rows = result.all()
@@ -71,7 +77,7 @@ async def get_all_skills(db: AsyncSession) -> list[dict]:
 
 async def get_stats(db: AsyncSession) -> dict:
     """Get overall study statistics."""
-    total_concepts = await db.scalar(select(func.count(Concept.id)))
+    total_concepts = await db.scalar(select(func.count(Concept.id)).where(Concept.deleted_at.is_(None)))
     total_sessions = await db.scalar(select(func.count(Session.id)))
     avg_score = await db.scalar(select(func.avg(SkillScore.score)))
     mastered = await db.scalar(

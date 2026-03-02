@@ -46,6 +46,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
 
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef(null);
+  const heartbeatTimer = useRef(null);
   const maxReconnectAttempts = 5;
 
   // Reset ws state when sessionId changes (new session)
@@ -90,12 +91,22 @@ export default function useWebSocket(sessionId, initialMessages = []) {
       setConnected(true);
       setConnectionStatus("connected");
       reconnectAttempts.current = 0;
+      // Start heartbeat ping every 30s to keep connection alive
+      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+      heartbeatTimer.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 30000);
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
       switch (data.type) {
+        case "pong":
+          break; // heartbeat response, ignore
+
         case "message":
           setThinking(false);
           setMessages((prev) => [
@@ -181,6 +192,10 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     ws.onclose = () => {
       setConnected(false);
       setThinking(false);
+      if (heartbeatTimer.current) {
+        clearInterval(heartbeatTimer.current);
+        heartbeatTimer.current = null;
+      }
       // Attempt reconnection
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;
@@ -243,6 +258,10 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);
       reconnectTimer.current = null;
+    }
+    if (heartbeatTimer.current) {
+      clearInterval(heartbeatTimer.current);
+      heartbeatTimer.current = null;
     }
     reconnectAttempts.current = maxReconnectAttempts; // prevent reconnect on intentional close
     wsRef.current?.close();

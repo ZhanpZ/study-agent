@@ -5,6 +5,7 @@ import useWebSocket from "../hooks/useWebSocket";
 import Chat from "../components/Chat";
 import { validateTopic, MIN_TOPIC_LENGTH, MAX_TOPIC_LENGTH } from "../utils/validation";
 import { MODE_CONFIG } from "../constants/modeConfig";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function Study() {
   const [topic, setTopic] = useState("");
@@ -36,7 +37,7 @@ export default function Study() {
     if (sessionId && !hasRestored.current) {
       hasRestored.current = true;
       setRestoring(true);
-      fetch(`/api/session/${sessionId}`)
+      fetchWithTimeout(`/api/session/${sessionId}`)
         .then((r) => r.json())
         .then((data) => {
           if (data.error) {
@@ -98,7 +99,7 @@ export default function Study() {
     setLoading(true);
     setTopicError("");
     try {
-      const res = await fetch("/api/session/start", {
+      const res = await fetchWithTimeout("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic: trimmed, mode }),

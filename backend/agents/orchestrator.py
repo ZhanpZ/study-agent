@@ -7,7 +7,7 @@ from backend.agents.tester import (
     generate_code_challenge, evaluate_code,
 )
 from backend.models.schemas import TesterEvaluation
-from backend.config import MAX_TEACH_ROUNDS, MASTERY_SCORE_THRESHOLD
+from backend.config import MAX_TEACH_ROUNDS, MASTERY_SCORE_THRESHOLD, MIN_TEACH_BEFORE_EVAL, EVAL_EVERY_N_ROUNDS
 
 
 class Phase(str, Enum):
@@ -181,8 +181,9 @@ class Orchestrator:
         })
         state.teach_rounds += 1
 
-        # After enough teaching rounds, move to evaluation
-        if state.teach_rounds >= 3 and state.teach_rounds % 2 == 1:
+        # After enough teaching rounds, periodically move to evaluation
+        if (state.teach_rounds >= MIN_TEACH_BEFORE_EVAL
+                and (state.teach_rounds - MIN_TEACH_BEFORE_EVAL) % EVAL_EVERY_N_ROUNDS == 0):
             state.phase = Phase.EVALUATE
             return self._handle_evaluate(state)
 

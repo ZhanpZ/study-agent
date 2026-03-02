@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -21,7 +22,7 @@ export default function Notes() {
     setResult(null);
 
     try {
-      const res = await fetch("/api/notes/clean-and-save", {
+      const res = await fetchWithTimeout("/api/notes/clean-and-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ raw_text: rawText }),

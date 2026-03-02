@@ -60,7 +60,7 @@ export default function MCQPanel({ questions, onSubmit }) {
                         : "bg-gray-900/30 border-focus-border text-gray-300 hover:border-focus-border-light hover:bg-gray-800/40"
                     }`}
                   >
-                    <span className={`inline-block w-5 font-mono text-xs mr-1.5 ${isSelected ? "text-indigo-400" : "text-gray-500"}`}>{letter})</span>
+                    <span className={`inline-block w-5 font-mono text-xs mr-1.5 ${isSelected ? "text-indigo-400" : "text-gray-400"}`}>{letter})</span>
                     {option.substring(3)}
                   </button>
                 );

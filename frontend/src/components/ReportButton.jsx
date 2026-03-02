@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function ReportButton({ quizType, questionData, addToast }) {
   const [open, setOpen] = useState(false);
@@ -19,7 +20,7 @@ export default function ReportButton({ quizType, questionData, addToast }) {
     if (!issue.trim()) return;
     setSending(true);
     try {
-      const res = await fetch("/api/quiz-feedback", {
+      const res = await fetchWithTimeout("/api/quiz-feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -44,7 +45,7 @@ export default function ReportButton({ quizType, questionData, addToast }) {
       <button
         onClick={() => setOpen(!open)}
         title="Report incorrect question"
-        className="text-gray-500 hover:text-red-400 transition-colors p-1"
+        className="text-gray-400 hover:text-red-400 transition-colors p-1"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z" />

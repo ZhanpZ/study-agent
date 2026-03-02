@@ -4,6 +4,7 @@ import { getConstraintScore } from "../utils/quizScoring";
 import ReportButton from "../components/ReportButton";
 import usePersistedState from "../hooks/usePersistedState";
 import saveQuizHistory from "../utils/saveQuizHistory";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 const TABS = [
   { key: "algorithm", label: "Algorithm Selection" },
@@ -55,7 +56,7 @@ function AlgorithmTab() {
     setAnswers({});
     setRevealed({});
     try {
-      const res = await fetch("/api/algorithm-quiz?count=5");
+      const res = await fetchWithTimeout("/api/algorithm-quiz?count=5", {}, 30000);
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (!data.questions || data.questions.length === 0) {
@@ -194,7 +195,7 @@ function ConstraintTab() {
     setSelectionsRaw({});
     setRevealed({});
     try {
-      const res = await fetch("/api/constraint-quiz?count=5");
+      const res = await fetchWithTimeout("/api/constraint-quiz?count=5", {}, 30000);
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (!data.questions || data.questions.length === 0) {
@@ -271,7 +272,7 @@ function ConstraintTab() {
           className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-300 hover:text-white transition-colors"
         >
           <span>Complexity Reference Table</span>
-          <span className={`text-xs text-gray-500 transition-transform ${showRef ? "rotate-180" : ""}`}>▼</span>
+          <span className={`text-xs text-gray-400 transition-transform ${showRef ? "rotate-180" : ""}`}>▼</span>
         </button>
 
         {showRef && (
@@ -359,9 +360,9 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
 
       {question.constraints && (
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <p className="text-xs text-gray-500 font-mono">Constraints: {question.constraints}</p>
+          <p className="text-xs text-gray-400 font-mono">Constraints: {question.constraints}</p>
           {question.variables && Object.keys(question.variables).length > 0 && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-400">
               where{" "}
               {Object.entries(question.variables).map(([v, desc], i, arr) => (
                 <span key={v}>
@@ -389,7 +390,7 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
             } else if (isSelected) {
               optionClass = "bg-red-900/30 border-red-600 text-red-300";
             } else {
-              optionClass = "bg-gray-900/40 border-gray-700 text-gray-500";
+              optionClass = "bg-gray-900/40 border-gray-700 text-gray-400";
             }
           } else if (isSelected) {
             optionClass = "bg-indigo-600/30 border-indigo-500 text-white";
@@ -454,7 +455,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
           <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <p className="text-xs text-gray-400 font-mono">{question.constraints}</p>
             {question.variables && Object.keys(question.variables).length > 0 && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-400">
                 where{" "}
                 {Object.entries(question.variables).map(([v, desc], i, arr) => (
                   <span key={v}>
@@ -472,7 +473,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
 
       {/* Select-all hint */}
       {!isRevealed && (
-        <p className="text-xs text-gray-500 italic">Select all algorithms that could work:</p>
+        <p className="text-xs text-gray-400 italic">Select all algorithms that could work:</p>
       )}
 
       {/* Options (multi-select checkboxes) */}
@@ -492,7 +493,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
             } else if (!isCorrect && isSelected) {
               optionClass = "bg-red-900/30 border-red-600 text-red-300";
             } else {
-              optionClass = "bg-gray-900/40 border-gray-700 text-gray-500";
+              optionClass = "bg-gray-900/40 border-gray-700 text-gray-400";
             }
           } else if (isSelected) {
             optionClass = "bg-indigo-600/30 border-indigo-500 text-white";

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
 import { ACTIVITY_TYPE } from "../constants/modeConfig";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function Dashboard() {
   const [skills, setSkills] = useState([]);
@@ -15,7 +16,7 @@ export default function Dashboard() {
 
   const deleteQuizEntry = async (entryId) => {
     try {
-      const res = await fetch(`/api/quiz-history/${entryId}`, { method: "DELETE" });
+      const res = await fetchWithTimeout(`/api/quiz-history/${entryId}`, { method: "DELETE" });
       if (res.ok) {
         setQuizHistory((prev) => prev.filter((e) => e.id !== entryId));
         addToast("Entry deleted", "success", 2000);
@@ -29,7 +30,7 @@ export default function Dashboard() {
 
   const deleteConcept = async (conceptId) => {
     try {
-      const res = await fetch(`/api/concepts/${conceptId}`, { method: "DELETE" });
+      const res = await fetchWithTimeout(`/api/concepts/${conceptId}`, { method: "DELETE" });
       if (res.ok) {
         setSkills((prev) => prev.filter((s) => s.concept_id !== conceptId));
         addToast("Concept deleted", "success", 2000);
@@ -43,10 +44,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.allSettled([
-      fetch("/api/dashboard/skills").then((r) => r.json()),
-      fetch("/api/dashboard/stats").then((r) => r.json()),
-      fetch("/api/quiz-history?limit=500").then((r) => r.json()),
-      fetch("/api/reviews/due").then((r) => r.json()),
+      fetchWithTimeout("/api/dashboard/skills").then((r) => r.json()),
+      fetchWithTimeout("/api/dashboard/stats").then((r) => r.json()),
+      fetchWithTimeout("/api/quiz-history?limit=500").then((r) => r.json()),
+      fetchWithTimeout("/api/reviews/due").then((r) => r.json()),
     ])
       .then(([skillsRes, statsRes, quizRes, reviewRes]) => {
         if (skillsRes.status === "fulfilled") setSkills(skillsRes.value);

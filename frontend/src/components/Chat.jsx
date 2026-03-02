@@ -172,7 +172,7 @@ export default function Chat({
         <div className={`${showComprehensionPanel ? "w-full md:w-3/5" : "w-full"} flex flex-col overflow-hidden`}>
           <div className="flex-1 overflow-y-auto mb-4 space-y-1 pr-1">
             {messages.length === 0 && !thinking && (
-              <div className="flex flex-col items-center justify-center mt-16 text-gray-500">
+              <div className="flex flex-col items-center justify-center mt-16 text-gray-400">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-3 opacity-40">
                   <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                 </svg>
@@ -418,9 +418,9 @@ function CodeChallengePanel({
               <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></span>
               <span className="w-2.5 h-2.5 rounded-full bg-green-500/60"></span>
             </div>
-            <span className="text-[11px] text-gray-500 font-mono">solution.py</span>
+            <span className="text-[11px] text-gray-400 font-mono">solution.py</span>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-gray-500">
+          <div className="flex items-center gap-3 text-[11px] text-gray-400">
             <span>{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
             <span className="text-gray-700">|</span>
             <span className="text-gray-600">Tab = 4 spaces</span>
@@ -461,7 +461,7 @@ function CodeChallengePanel({
 
       {/* Submit footer */}
       <div className="px-4 py-3 border-t border-focus-border bg-focus-surface flex items-center justify-between">
-        <span className="text-[11px] text-gray-500">
+        <span className="text-[11px] text-gray-400">
           <kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-gray-400 border border-gray-700 font-mono text-[10px]">Ctrl</kbd>
           +
           <kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-gray-400 border border-gray-700 font-mono text-[10px]">Enter</kbd>

@@ -10,7 +10,7 @@ export default function ComprehensionPanel({ questions }) {
 
   if (!questions || questions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center mt-8 text-gray-500">
+      <div className="flex flex-col items-center justify-center mt-8 text-gray-400">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 opacity-30">
           <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
@@ -62,7 +62,7 @@ export default function ComprehensionPanel({ questions }) {
                   } else if (isSelected && !isCorrect) {
                     optionClass = "bg-red-900/25 border-red-600/40 text-red-300";
                   } else {
-                    optionClass = "bg-gray-900/20 border-focus-border text-gray-500";
+                    optionClass = "bg-gray-900/20 border-focus-border text-gray-400";
                   }
                 } else if (isSelected) {
                   optionClass = "bg-indigo-600/25 border-indigo-500/50 text-white";

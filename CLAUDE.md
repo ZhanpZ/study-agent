@@ -58,3 +58,13 @@ No automated tests or linting are configured.
 ## Environment
 
 Requires `.env` in project root with `OPENAI_API_KEY` and `DATABASE_URL` (defaults to `sqlite+aiosqlite:///./study.db`). Database auto-creates on first startup.
+
+## Change Log & Diary
+- After completing any significant task or code change, you MUST append a brief entry to `DIARY.md`.
+- Each entry should include:
+  - **Date:** (Current date)
+  - **Task:** A one-sentence summary of what was accomplished.
+  - **Files Changed:** A list of impacted files.
+  - **Context:** Why the change was made or any "gotchas" discovered.
+- If `DIARY.md` does not exist, create it.
+- Do not ask for permission to update the diary; it is a mandatory part of your workflow.

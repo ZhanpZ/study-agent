@@ -317,24 +317,12 @@ async def delete_quiz_history(entry_id: int, db: AsyncSession = Depends(get_db))
 
 @app.delete("/api/concepts/{concept_id}")
 async def delete_concept(concept_id: int, db: AsyncSession = Depends(get_db)):
-    """Delete a concept and all its associated data (skills, reviews, sessions, messages)."""
+    """Soft-delete a concept (sets deleted_at timestamp)."""
     concept = await db.get(Concept, concept_id)
     if not concept:
         raise HTTPException(status_code=404, detail="Concept not found")
 
-    # Batch delete: get all session IDs, then delete messages and sessions in bulk
-    sessions_result = await db.execute(
-        select(Session.id).where(Session.concept_id == concept_id)
-    )
-    session_ids = [row[0] for row in sessions_result.all()]
-
-    if session_ids:
-        await db.execute(delete(Message).where(Message.session_id.in_(session_ids)))
-        await db.execute(delete(Session).where(Session.id.in_(session_ids)))
-
-    await db.execute(delete(SkillScore).where(SkillScore.concept_id == concept_id))
-    await db.execute(delete(ReviewSchedule).where(ReviewSchedule.concept_id == concept_id))
-    await db.delete(concept)
+    concept.deleted_at = datetime.datetime.utcnow()
     await db.commit()
     return {"status": "deleted", "id": concept_id}
 
@@ -765,16 +753,18 @@ async def _handle_post_evaluation(
         "gaps": evaluation.gaps,
     })
 
-    # Update skill and review schedule after every evaluation
+    # Update skill and review schedule in a single transaction
     session_record = await db.get(Session, session_id)
     if session_record and session_record.concept_id:
         await update_skill(
             db, session_record.concept_id,
             evaluation.score, evaluation.gaps,
+            auto_commit=False,
         )
         await update_review_schedule(
             db, session_record.concept_id,
             evaluation.score,
+            auto_commit=False,
         )
         await db.commit()
 

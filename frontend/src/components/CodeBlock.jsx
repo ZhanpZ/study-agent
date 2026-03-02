@@ -50,7 +50,7 @@ export default function CodeBlock({ children, className, node, ...rest }) {
         </span>
         <button
           onClick={handleCopy}
-          className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+          className="text-[11px] text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1"
         >
           {copied ? (
             <>

@@ -13,6 +13,7 @@ class Concept(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     skill_score: Mapped["SkillScore"] = relationship(back_populates="concept", uselist=False)
     review_schedule: Mapped["ReviewSchedule"] = relationship(back_populates="concept", uselist=False)
@@ -26,12 +27,16 @@ class SkillScore(Base):
     concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id"), unique=True)
     score: Mapped[float] = mapped_column(Float, default=0.0)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
-    misconceptions: Mapped[dict] = mapped_column(JSON, default=list)
+    misconceptions: Mapped[list] = mapped_column(JSON, default=list)
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
     )
 
     concept: Mapped["Concept"] = relationship(back_populates="skill_score")
+
+    __table_args__ = (
+        Index("ix_skill_scores_score", "score"),
+    )
 
 
 class ReviewSchedule(Base):
@@ -70,6 +75,7 @@ class Session(Base):
 
     __table_args__ = (
         Index("ix_sessions_concept_id", "concept_id"),
+        Index("ix_sessions_ended_at", "ended_at"),
     )
 
 

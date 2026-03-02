@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function Review() {
   const [reviews, setReviews] = useState([]);
@@ -9,7 +10,7 @@ export default function Review() {
   const { addToast } = useToast();
 
   useEffect(() => {
-    fetch("/api/reviews/due")
+    fetchWithTimeout("/api/reviews/due")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch");
         return res.json();

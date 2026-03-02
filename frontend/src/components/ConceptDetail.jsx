@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useToast } from "./Toast";
 import { MODE_CONFIG } from "../constants/modeConfig";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function ConceptDetail({ conceptId, conceptName, score, onClose }) {
   const [sessions, setSessions] = useState([]);
@@ -13,7 +14,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
   const { addToast } = useToast();
 
   useEffect(() => {
-    fetch(`/api/concepts/${conceptId}/sessions`)
+    fetchWithTimeout(`/api/concepts/${conceptId}/sessions`)
       .then((r) => r.json())
       .then((data) => {
         setSessions(data);
@@ -42,7 +43,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
     setExpandedSession(session.id);
     if (session.has_summary) {
       setLoadingSummary(true);
-      fetch(`/api/session/${session.id}/summary`)
+      fetchWithTimeout(`/api/session/${session.id}/summary`)
         .then((r) => r.json())
         .then((data) => {
           setSummaryContent(data.summary);

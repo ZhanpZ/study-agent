@@ -65,8 +65,12 @@ async def update_review_schedule(
     db: AsyncSession,
     concept_id: int,
     score: float,
+    auto_commit: bool = True,
 ) -> ReviewSchedule:
-    """Update the review schedule for a concept after an evaluation."""
+    """Update the review schedule for a concept after an evaluation.
+
+    Set auto_commit=False to batch with other updates in a single transaction.
+    """
     result = await db.execute(
         select(ReviewSchedule).where(ReviewSchedule.concept_id == concept_id)
     )
@@ -97,8 +101,9 @@ async def update_review_schedule(
         schedule.next_review = now + datetime.timedelta(days=interval)
         schedule.last_review = now
 
-    await db.commit()
-    await db.refresh(schedule)
+    if auto_commit:
+        await db.commit()
+        await db.refresh(schedule)
     return schedule
 
 
@@ -111,6 +116,7 @@ async def get_due_reviews(db: AsyncSession) -> list[dict]:
         select(Concept, ReviewSchedule, SkillScore)
         .outerjoin(ReviewSchedule, ReviewSchedule.concept_id == Concept.id)
         .outerjoin(SkillScore, SkillScore.concept_id == Concept.id)
+        .where(Concept.deleted_at.is_(None))
         .order_by(
             # Due items first (next_review <= now), then new (no schedule), then upcoming
             (ReviewSchedule.next_review <= now).desc().nulls_last(),

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useToast } from "../components/Toast";
 import ReportButton from "../components/ReportButton";
 import usePersistedState from "../hooks/usePersistedState";
+import fetchWithTimeout from "../utils/fetchWithTimeout";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
@@ -62,7 +63,7 @@ export default function MLMathDrill() {
     setProofAnswer(null);
     setProofRevealed(false);
     try {
-      const res = await fetch(`/api/ml-math?topic=${encodeURIComponent(topic)}`);
+      const res = await fetchWithTimeout(`/api/ml-math?topic=${encodeURIComponent(topic)}`, {}, 30000);
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (data.question && data.question.math_question) {
@@ -187,7 +188,7 @@ export default function MLMathDrill() {
                       ? `${s.color} text-white`
                       : idx < stepIdx
                       ? "bg-gray-700 text-gray-300"
-                      : "bg-gray-800 text-gray-500"
+                      : "bg-gray-800 text-gray-400"
                   }`}
                 >
                   {idx < stepIdx && <span>&#10003;</span>}
@@ -468,7 +469,7 @@ function ApplicationStep({ app }) {
         )}
       </div>
 
-      <p className="text-xs text-gray-500 italic">Click "Next Question" above to continue drilling.</p>
+      <p className="text-xs text-gray-400 italic">Click "Next Question" above to continue drilling.</p>
     </div>
   );
 }
@@ -487,7 +488,7 @@ function MCOptions({ options, correct, answer, revealed, onSelect }) {
         if (revealed) {
           if (isCorrect) cls = "bg-green-900/30 border-green-600 text-green-300";
           else if (isSelected) cls = "bg-red-900/30 border-red-600 text-red-300";
-          else cls = "bg-gray-900/40 border-gray-700 text-gray-500";
+          else cls = "bg-gray-900/40 border-gray-700 text-gray-400";
         } else if (isSelected) {
           cls = "bg-indigo-600/30 border-indigo-500 text-white";
         }
