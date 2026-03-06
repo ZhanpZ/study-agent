@@ -89,6 +89,24 @@ export default function Dashboard() {
   // Recent activity (last 10 across all types)
   const recentActivity = useMemo(() => quizHistory.slice(0, 10), [quizHistory]);
 
+  // Top knowledge gaps across all skills
+  const topGaps = useMemo(() => {
+    const allGaps = skills.flatMap((s) => s.misconceptions || []);
+    return [...new Set(allGaps)].slice(0, 3);
+  }, [skills]);
+
+  // Topic breakdown for algo quizzes
+  const algoTopicBreakdown = useMemo(() => {
+    const topics = {};
+    algoQuizzes.forEach((q) => {
+      const t = q.topic || "all";
+      topics[t] = (topics[t] || 0) + 1;
+    });
+    return Object.entries(topics)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4);
+  }, [algoQuizzes]);
+
   return (
     <div className="space-y-6">
       {/* Overview Stats Bar */}
@@ -190,27 +208,23 @@ export default function Dashboard() {
                 </p>
               )}
               {/* Top gaps */}
-              {(() => {
-                const allGaps = skills.flatMap((s) => s.misconceptions || []);
-                const uniqueGaps = [...new Set(allGaps)].slice(0, 3);
-                return uniqueGaps.length > 0 ? (
-                  <div className="pt-2 border-t border-focus-border">
-                    <p className="text-xs text-focus-text-dim mb-1">
-                      Top gaps to address
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {uniqueGaps.map((gap, i) => (
-                        <span
-                          key={i}
-                          className="text-xs px-2 py-0.5 bg-red-900/20 text-red-300 rounded"
-                        >
-                          {gap}
-                        </span>
-                      ))}
-                    </div>
+              {topGaps.length > 0 && (
+                <div className="pt-2 border-t border-focus-border">
+                  <p className="text-xs text-focus-text-dim mb-1">
+                    Top gaps to address
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {topGaps.map((gap, i) => (
+                      <span
+                        key={i}
+                        className="text-xs px-2 py-0.5 bg-red-900/20 text-red-300 rounded"
+                      >
+                        {gap}
+                      </span>
+                    ))}
                   </div>
-                ) : null;
-              })()}
+                </div>
+              )}
             </div>
           )}
         </SectionCard>
@@ -258,33 +272,23 @@ export default function Dashboard() {
                 })}
               </div>
               {/* Topic breakdown */}
-              {(() => {
-                const topics = {};
-                algoQuizzes.forEach((q) => {
-                  const t = q.topic || "all";
-                  topics[t] = (topics[t] || 0) + 1;
-                });
-                const sorted = Object.entries(topics)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 4);
-                return (
-                  <div className="pt-2 border-t border-focus-border">
-                    <p className="text-xs text-focus-text-dim mb-1">
-                      Topics practiced
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {sorted.map(([topic, count]) => (
-                        <span
-                          key={topic}
-                          className="text-xs px-2 py-0.5 bg-focus-amber-dim/30 text-focus-amber-light rounded"
-                        >
-                          {topic} ({count})
-                        </span>
-                      ))}
-                    </div>
+              {algoTopicBreakdown.length > 0 && (
+                <div className="pt-2 border-t border-focus-border">
+                  <p className="text-xs text-focus-text-dim mb-1">
+                    Topics practiced
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {algoTopicBreakdown.map(([topic, count]) => (
+                      <span
+                        key={topic}
+                        className="text-xs px-2 py-0.5 bg-focus-amber-dim/30 text-focus-amber-light rounded"
+                      >
+                        {topic} ({count})
+                      </span>
+                    ))}
                   </div>
-                );
-              })()}
+                </div>
+              )}
             </div>
           )}
         </SectionCard>

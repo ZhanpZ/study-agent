@@ -46,20 +46,32 @@ async def find_matching_concept(
     db: AsyncSession, topic: str, threshold: float = CONCEPT_SIMILARITY_THRESHOLD
 ) -> Concept | None:
     """Find an existing concept that matches the given topic above threshold."""
-    # Fast path: exact match
-    result = await db.execute(select(Concept).where(Concept.name == topic))
+    normalized_topic = normalize(topic)
+
+    # Fast path: exact match (on original name)
+    result = await db.execute(
+        select(Concept).where(Concept.name == topic, Concept.deleted_at.is_(None))
+    )
     exact = result.scalar_one_or_none()
     if exact:
         return exact
 
-    # Fuzzy match against all concepts
-    result = await db.execute(select(Concept))
+    # Fuzzy match against non-deleted concepts only
+    result = await db.execute(
+        select(Concept).where(Concept.deleted_at.is_(None))
+    )
     concepts = result.scalars().all()
 
     best_match = None
     best_score = 0.0
 
     for concept in concepts:
+        # Quick pre-filter: skip if normalized names differ in length by too much
+        normalized_name = normalize(concept.name)
+        len_ratio = len(normalized_topic) / max(len(normalized_name), 1)
+        if len_ratio < 0.3 or len_ratio > 3.0:
+            continue
+
         score = similarity(topic, concept.name)
         if score > best_score:
             best_score = score

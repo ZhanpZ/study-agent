@@ -1,9 +1,12 @@
 import json
 import asyncio
 import datetime
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,19 +29,13 @@ from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
 )
-from backend.services.concept_matcher import find_matching_concept, deduplicate_concepts
+from backend.services.concept_matcher import find_matching_concept
 from backend.config import QUIZ_HISTORY_DEFAULT_LIMIT, QUIZ_HISTORY_MAX_LIMIT
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    # Auto-merge duplicate concepts from before fuzzy matching was added
-    async for db in get_db():
-        merged = await deduplicate_concepts(db)
-        if merged:
-            print(f"Merged {merged} duplicate concept(s) on startup")
-        break
     yield
 
 
@@ -220,6 +217,14 @@ async def merge_concepts(body: ConceptMerge, db: AsyncSession = Depends(get_db))
     await db.commit()
 
     return {"status": "merged", "target_id": target.id}
+
+
+@app.post("/api/concepts/deduplicate")
+async def deduplicate(db: AsyncSession = Depends(get_db)):
+    """Manually merge duplicate concepts (previously ran on every startup)."""
+    from backend.services.concept_matcher import deduplicate_concepts
+    merged = await deduplicate_concepts(db)
+    return {"status": "ok", "merged_count": merged}
 
 
 @app.get("/api/algorithm-quiz")
@@ -749,8 +754,8 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 if session_record:
                     session_record.phase = state.phase.value
                     await db.commit()
-            except Exception:
-                pass  # Best-effort DB save on disconnect
+            except Exception as e:
+                logger.error("Failed to save session %d on disconnect: %s", session_id, e)
             finally:
                 active_sessions.pop(session_id, None)
 

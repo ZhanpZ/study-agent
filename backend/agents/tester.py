@@ -357,28 +357,3 @@ def _parse_evaluation(result: str, fallback_score: float) -> TesterEvaluation:
     )
 
 
-def generate_review_questions(
-    agent: Agent,
-    topic: str,
-    skill_level: float,
-    known_gaps: list[str],
-) -> str:
-    gaps_text = ", ".join(known_gaps) if known_gaps else "none recorded"
-
-    task = Task(
-        description=(
-            f"Generate 3 review questions for '{topic}'.\n"
-            f"Skill: {skill_level}/100. Weak areas: {gaps_text}.\n\n"
-            "Requirements:\n"
-            "- Test APPLICATION in SDE/MLE contexts, not recall\n"
-            "- Target known weak areas\n"
-            "- Include one 'explain why X is wrong' question\n"
-            "- Include one scenario/edge-case question\n"
-            "- Match skill level\n\n"
-            "Format: numbered 1-3. Be concise."
-        ),
-        expected_output="3 numbered review questions targeting weak areas.",
-        agent=agent,
-    )
-    result = agent.execute_task(task)
-    return str(result)

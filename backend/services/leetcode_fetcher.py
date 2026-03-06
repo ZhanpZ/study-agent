@@ -252,9 +252,9 @@ def fetch_leetcode_problem(topic: str, difficulty: str | None = None) -> dict | 
     logger.info("Fetching LeetCode problem for topic='%s' → tag='%s'", topic, tag_slug)
 
     last_err = None
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            with httpx.Client(timeout=15.0) as client:
+    with httpx.Client(timeout=15.0) as client:
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
                 # Step 1: Get list of problems for this tag (cached)
                 questions = _fetch_problem_list(client, tag_slug)
 
@@ -313,16 +313,16 @@ def fetch_leetcode_problem(topic: str, difficulty: str | None = None) -> dict | 
                     "leetcode_id": frontend_id,
                 }
 
-        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.ConnectError) as e:
-            last_err = e
-            if attempt < _MAX_RETRIES:
-                delay = 1.0 * (2 ** attempt)
-                logger.warning("LeetCode fetch attempt %d failed: %s. Retrying in %.1fs...", attempt + 1, e, delay)
-                time.sleep(delay)
-            else:
-                logger.warning("LeetCode fetch failed after %d attempts: %s", _MAX_RETRIES + 1, e)
-        except Exception as e:
-            logger.error("Unexpected error fetching LeetCode problem: %s", e, exc_info=True)
-            return None
+            except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.ConnectError) as e:
+                last_err = e
+                if attempt < _MAX_RETRIES:
+                    delay = 1.0 * (2 ** attempt)
+                    logger.warning("LeetCode fetch attempt %d failed: %s. Retrying in %.1fs...", attempt + 1, e, delay)
+                    time.sleep(delay)
+                else:
+                    logger.warning("LeetCode fetch failed after %d attempts: %s", _MAX_RETRIES + 1, e)
+            except Exception as e:
+                logger.error("Unexpected error fetching LeetCode problem: %s", e, exc_info=True)
+                return None
 
     return None

@@ -19,6 +19,11 @@ class Concept(Base):
     review_schedule: Mapped["ReviewSchedule"] = relationship(back_populates="concept", uselist=False)
     sessions: Mapped[list["Session"]] = relationship(back_populates="concept")
 
+    __table_args__ = (
+        Index("ix_concepts_name", "name"),
+        Index("ix_concepts_deleted_at", "deleted_at"),
+    )
+
 
 class SkillScore(Base):
     __tablename__ = "skill_scores"
@@ -76,6 +81,8 @@ class Session(Base):
     __table_args__ = (
         Index("ix_sessions_concept_id", "concept_id"),
         Index("ix_sessions_ended_at", "ended_at"),
+        Index("ix_sessions_started_at", "started_at"),
+        Index("ix_sessions_phase", "phase"),
     )
 
 

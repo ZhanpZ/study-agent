@@ -33,3 +33,20 @@
 - `frontend/src/App.jsx` — Added lazy import, nav item, and route for `/dsa-templates`.
 
 **Context:** The user wanted a way to practice typing out canonical DSA template implementations from memory, similar to how competitive programmers maintain a template library. The feature uses static template definitions (not LLM-generated) for determinism and accuracy, with LLM used only for evaluating user submissions. Follows the existing standalone quiz page pattern (REST API, sessionStorage persistence, auto-save to QuizHistory).
+
+## 2026-03-05
+**Task:** Comprehensive performance and code quality optimization pass across backend and frontend — no new features added.
+
+**Files Changed:**
+- `backend/models/tables.py` — Added 4 missing database indexes: `ix_concepts_name`, `ix_concepts_deleted_at`, `ix_sessions_started_at`, `ix_sessions_phase`.
+- `backend/services/concept_matcher.py` — Optimized fuzzy matching: filters out deleted concepts, adds length-ratio pre-filter to skip obviously dissimilar names.
+- `backend/main.py` — Removed O(n^2) `deduplicate_concepts()` from server startup (moved to manual `POST /api/concepts/deduplicate` endpoint). Added `logging` module and replaced silent `except Exception: pass` with proper error logging on WebSocket disconnect. Removed unused import.
+- `backend/services/leetcode_fetcher.py` — Moved `httpx.Client` creation outside the retry loop so the same client is reused across retry attempts.
+- `backend/agents/tester.py` — Removed unused `generate_review_questions()` function (dead code).
+- `frontend/src/components/Chat.jsx` — Wrapped `handleInputFocus`, `handleSubmit`, `handleCodeSubmit`, `handleTabKey` in `useCallback`. Extracted inline `CodeChallengePanel` to its own file.
+- `frontend/src/components/CodeChallengePanel.jsx` — **Created.** Extracted from Chat.jsx for isolated re-renders and better code organization.
+- `frontend/src/components/CodeBlock.jsx` — Lazy-loads `react-syntax-highlighter` (~200KB) via dynamic import with a plain `<pre>` fallback while loading. Preloads on module import so it's ready by the time user sees code blocks.
+- `frontend/src/pages/Dashboard.jsx` — Replaced inline IIFEs (top gaps, topic breakdown) with `useMemo` hooks to avoid recalculation on every render.
+- `frontend/src/hooks/useWebSocket.js` — Refactored from 12 individual `useState` calls to a single `useReducer`, batching related state updates (e.g., score+gaps, phase+thinking) into single dispatches. Removed redundant `connected` state (now derived from `connectionStatus`).
+
+**Context:** Pure optimization pass — no new functionality. Key improvements: faster startup (no O(n^2) dedup), faster concept matching (pre-filtering + deleted exclusion), fewer React re-renders per WebSocket message (useReducer batching, useCallback memoization), smaller initial bundle (lazy-loaded syntax highlighter), and better code organization (extracted CodeChallengePanel).

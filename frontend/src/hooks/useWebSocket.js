@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useReducer, useCallback, useEffect, useMemo } from "react";
 import { loadSessionState, persistSessionState } from "../utils/sessionStorage";
 
 const PHASE_LABELS = {
@@ -10,39 +10,127 @@ const PHASE_LABELS = {
   complete: "Complete",
 };
 
+function initState(sessionId) {
+  const storedId = loadSessionState("ws_sessionId", null);
+  const isMatch = storedId === sessionId;
+  return {
+    messages: [],
+    phase: "explain",
+    score: null,
+    gaps: [],
+    mcqQuestions: isMatch ? loadSessionState("ws_mcqQuestions", null) : null,
+    codeChallenge: isMatch ? loadSessionState("ws_codeChallenge", null) : null,
+    summary: isMatch ? loadSessionState("ws_summary", null) : null,
+    comprehensionMcqs: isMatch ? loadSessionState("ws_comprehensionMcqs", []) : [],
+    thinking: false,
+    connectionStatus: "disconnected",
+    phaseTransition: null,
+  };
+}
+
+function wsReducer(state, action) {
+  switch (action.type) {
+    case "WS_MESSAGE": {
+      const newState = { ...state, thinking: false };
+      newState.messages = [
+        ...state.messages,
+        { agent: action.agent, content: action.content, phase: action.phase, isNew: true },
+      ];
+      if (action.phase && action.phase !== state.phase) {
+        newState.phase = action.phase;
+      }
+      return newState;
+    }
+    case "PHASE_CHANGE": {
+      const newState = { ...state, thinking: false, phase: action.phase };
+      if (action.phase !== "explain" && action.phase !== "explain_done") {
+        newState.comprehensionMcqs = [];
+        persistSessionState("ws_comprehensionMcqs", []);
+      }
+      return newState;
+    }
+    case "SCORE_UPDATE":
+      return { ...state, thinking: false, score: action.score, gaps: action.gaps || [] };
+    case "MCQ": {
+      persistSessionState("ws_mcqQuestions", action.questions);
+      return { ...state, thinking: false, mcqQuestions: action.questions, phase: "quiz" };
+    }
+    case "CODE_CHALLENGE": {
+      const challenge = { problem: action.problem, hints: action.hints || [] };
+      if (action.url) challenge.url = action.url;
+      if (action.title) challenge.title = action.title;
+      if (action.difficulty) challenge.difficulty = action.difficulty;
+      if (action.leetcode_id) challenge.leetcode_id = action.leetcode_id;
+      persistSessionState("ws_codeChallenge", challenge);
+      return { ...state, thinking: false, codeChallenge: challenge, phase: "evaluate" };
+    }
+    case "COMPREHENSION_MCQS": {
+      const next = [...state.comprehensionMcqs, ...action.questions];
+      persistSessionState("ws_comprehensionMcqs", next);
+      return { ...state, comprehensionMcqs: next };
+    }
+    case "SUMMARY":
+      persistSessionState("ws_summary", action.content);
+      return { ...state, thinking: false, summary: action.content };
+    case "ERROR":
+      return {
+        ...state,
+        thinking: false,
+        messages: [...state.messages, { agent: "system", content: action.content, isNew: true }],
+      };
+    case "SET_MESSAGES":
+      return { ...state, messages: action.messages };
+    case "SEND_MESSAGE":
+      return {
+        ...state,
+        thinking: true,
+        messages: [...state.messages, { agent: "user", content: action.content, isNew: true }],
+      };
+    case "SET_THINKING":
+      return { ...state, thinking: action.value };
+    case "CONNECTION_STATUS":
+      return { ...state, connectionStatus: action.status };
+    case "WS_CLOSE":
+      return { ...state, thinking: false, connectionStatus: action.status };
+    case "PHASE_TRANSITION":
+      return { ...state, phaseTransition: action.label };
+    case "CLEAR_MCQ":
+      persistSessionState("ws_mcqQuestions", null);
+      return { ...state, thinking: true, mcqQuestions: null };
+    case "CLEAR_CODE_CHALLENGE":
+      persistSessionState("ws_codeChallenge", null);
+      return { ...state, thinking: true, codeChallenge: null };
+    case "RESET_SESSION": {
+      sessionStorage.removeItem("ws_mcqQuestions");
+      sessionStorage.removeItem("ws_codeChallenge");
+      sessionStorage.removeItem("ws_summary");
+      sessionStorage.removeItem("ws_comprehensionMcqs");
+      return {
+        ...state,
+        mcqQuestions: null,
+        codeChallenge: null,
+        summary: null,
+        comprehensionMcqs: [],
+        phase: "explain",
+        score: null,
+        gaps: [],
+      };
+    }
+    default:
+      return state;
+  }
+}
+
 export default function useWebSocket(sessionId, initialMessages = []) {
   const wsRef = useRef(null);
-  const [messages, setMessages] = useState(initialMessages);
-  const [phase, setPhase] = useState("explain");
-  const [score, setScore] = useState(null);
-  const [gaps, setGaps] = useState([]);
-  const [connected, setConnected] = useState(false);
-  const [mcqQuestions, setMcqQuestions] = useState(() => {
-    const storedId = loadSessionState("ws_sessionId", null);
-    return storedId === sessionId ? loadSessionState("ws_mcqQuestions", null) : null;
-  });
-  const [codeChallenge, setCodeChallenge] = useState(() => {
-    const storedId = loadSessionState("ws_sessionId", null);
-    return storedId === sessionId ? loadSessionState("ws_codeChallenge", null) : null;
-  });
-  const [summary, setSummary] = useState(() => {
-    const storedId = loadSessionState("ws_sessionId", null);
-    return storedId === sessionId ? loadSessionState("ws_summary", null) : null;
-  });
-  const [comprehensionMcqs, setComprehensionMcqs] = useState(() => {
-    const storedId = loadSessionState("ws_sessionId", null);
-    return storedId === sessionId ? loadSessionState("ws_comprehensionMcqs", []) : [];
-  });
-  const [thinking, setThinking] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState("disconnected"); // disconnected | connecting | connected | reconnecting
-  const [phaseTransition, setPhaseTransition] = useState(null);
-  const prevSessionIdRef = useRef(sessionId);
-  const phaseRef = useRef(phase);
+  const [state, dispatch] = useReducer(wsReducer, sessionId, initState);
 
-  // Keep phaseRef in sync with phase state
+  const prevSessionIdRef = useRef(sessionId);
+  const phaseRef = useRef(state.phase);
+
   useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
+    phaseRef.current = state.phase;
+  }, [state.phase]);
 
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef(null);
@@ -52,17 +140,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   // Reset ws state when sessionId changes (new session)
   useEffect(() => {
     if (sessionId && sessionId !== prevSessionIdRef.current) {
-      setMcqQuestions(null);
-      setCodeChallenge(null);
-      setSummary(null);
-      setComprehensionMcqs([]);
-      setPhase("explain");
-      setScore(null);
-      setGaps([]);
-      sessionStorage.removeItem("ws_mcqQuestions");
-      sessionStorage.removeItem("ws_codeChallenge");
-      sessionStorage.removeItem("ws_summary");
-      sessionStorage.removeItem("ws_comprehensionMcqs");
+      dispatch({ type: "RESET_SESSION" });
     }
     if (sessionId) {
       persistSessionState("ws_sessionId", sessionId);
@@ -73,25 +151,29 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   // Sync initialMessages when they arrive from session restore
   useEffect(() => {
     if (initialMessages.length > 0) {
-      setMessages(initialMessages);
+      dispatch({ type: "SET_MESSAGES", messages: initialMessages });
     }
   }, [initialMessages]);
+
+  function showPhaseTransition(newPhase) {
+    const label = PHASE_LABELS[newPhase] || newPhase;
+    dispatch({ type: "PHASE_TRANSITION", label });
+    setTimeout(() => dispatch({ type: "PHASE_TRANSITION", label: null }), 3000);
+  }
 
   const connect = useCallback(() => {
     if (!sessionId) return;
 
     const isReconnect = reconnectAttempts.current > 0;
-    setConnectionStatus(isReconnect ? "reconnecting" : "connecting");
+    dispatch({ type: "CONNECTION_STATUS", status: isReconnect ? "reconnecting" : "connecting" });
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/session/${sessionId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setConnected(true);
-      setConnectionStatus("connected");
+      dispatch({ type: "CONNECTION_STATUS", status: "connected" });
       reconnectAttempts.current = 0;
-      // Start heartbeat ping every 30s to keep connection alive
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
       heartbeatTimer.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -105,152 +187,88 @@ export default function useWebSocket(sessionId, initialMessages = []) {
 
       switch (data.type) {
         case "pong":
-          break; // heartbeat response, ignore
-
+          break;
         case "message":
-          setThinking(false);
-          setMessages((prev) => [
-            ...prev,
-            { agent: data.agent, content: data.content, phase: data.phase, isNew: true },
-          ]);
-          if (data.phase) {
-            setPhase((prev) => {
-              if (data.phase !== prev) showPhaseTransition(data.phase);
-              return data.phase;
-            });
-          }
+          dispatch({ type: "WS_MESSAGE", agent: data.agent, content: data.content, phase: data.phase });
+          if (data.phase && data.phase !== phaseRef.current) showPhaseTransition(data.phase);
           break;
-
-        case "phase_change": {
-          setPhase((prev) => {
-            if (data.phase !== prev) showPhaseTransition(data.phase);
-            return data.phase;
-          });
-          setThinking(false);
-          // Clear comprehension MCQs when leaving explain phases
-          if (data.phase !== "explain" && data.phase !== "explain_done") {
-            setComprehensionMcqs([]);
-            persistSessionState("ws_comprehensionMcqs", []);
-          }
+        case "phase_change":
+          if (data.phase !== phaseRef.current) showPhaseTransition(data.phase);
+          dispatch({ type: "PHASE_CHANGE", phase: data.phase });
           break;
-        }
-
         case "score_update":
-          setThinking(false);
-          setScore(data.score);
-          setGaps(data.gaps || []);
+          dispatch({ type: "SCORE_UPDATE", score: data.score, gaps: data.gaps });
           break;
-
         case "mcq":
-          setThinking(false);
-          setMcqQuestions(data.questions);
-          persistSessionState("ws_mcqQuestions", data.questions);
-          setPhase("quiz");
+          dispatch({ type: "MCQ", questions: data.questions });
           break;
-
-        case "code_challenge": {
-          setThinking(false);
-          const challenge = {
-            problem: data.problem,
-            hints: data.hints || [],
-          };
-          // Pass through LeetCode metadata if present
-          if (data.url) challenge.url = data.url;
-          if (data.title) challenge.title = data.title;
-          if (data.difficulty) challenge.difficulty = data.difficulty;
-          if (data.leetcode_id) challenge.leetcode_id = data.leetcode_id;
-          setCodeChallenge(challenge);
-          persistSessionState("ws_codeChallenge", challenge);
-          setPhase("evaluate");
-          break;
-        }
-
-        case "comprehension_mcqs":
-          setComprehensionMcqs((prev) => {
-            const next = [...prev, ...data.questions];
-            persistSessionState("ws_comprehensionMcqs", next);
-            return next;
+        case "code_challenge":
+          dispatch({
+            type: "CODE_CHALLENGE",
+            problem: data.problem, hints: data.hints,
+            url: data.url, title: data.title,
+            difficulty: data.difficulty, leetcode_id: data.leetcode_id,
           });
           break;
-
-        case "summary":
-          setThinking(false);
-          setSummary(data.content);
-          persistSessionState("ws_summary", data.content);
+        case "comprehension_mcqs":
+          dispatch({ type: "COMPREHENSION_MCQS", questions: data.questions });
           break;
-
+        case "summary":
+          dispatch({ type: "SUMMARY", content: data.content });
+          break;
         case "error":
-          setThinking(false);
-          setMessages((prev) => [
-            ...prev,
-            { agent: "system", content: data.content, isNew: true },
-          ]);
+          dispatch({ type: "ERROR", content: data.content });
           break;
       }
     };
 
     ws.onclose = () => {
-      setConnected(false);
-      setThinking(false);
       if (heartbeatTimer.current) {
         clearInterval(heartbeatTimer.current);
         heartbeatTimer.current = null;
       }
-      // Attempt reconnection
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 10000);
-        setConnectionStatus("reconnecting");
+        dispatch({ type: "WS_CLOSE", status: "reconnecting" });
         reconnectTimer.current = setTimeout(() => {
           connect();
         }, delay);
       } else {
-        setConnectionStatus("disconnected");
+        dispatch({ type: "WS_CLOSE", status: "disconnected" });
       }
     };
 
     ws.onerror = () => {
-      setConnected(false);
-      setThinking(false);
+      dispatch({ type: "SET_THINKING", value: false });
     };
   }, [sessionId]);
-
-  function showPhaseTransition(newPhase) {
-    const label = PHASE_LABELS[newPhase] || newPhase;
-    setPhaseTransition(label);
-    setTimeout(() => setPhaseTransition(null), 3000);
-  }
 
   const sendMessage = useCallback((content) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "message", content }));
-      setMessages((prev) => [...prev, { agent: "user", content, isNew: true }]);
-      setThinking(true);
+      dispatch({ type: "SEND_MESSAGE", content });
     }
   }, []);
 
   const sendReadyToTeach = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "ready_to_teach" }));
-      setThinking(true);
+      dispatch({ type: "SET_THINKING", value: true });
     }
   }, []);
 
   const sendMCQAnswers = useCallback((answers) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "mcq_answers", answers }));
-      setMcqQuestions(null);
-      persistSessionState("ws_mcqQuestions", null);
-      setThinking(true);
+      dispatch({ type: "CLEAR_MCQ" });
     }
   }, []);
 
   const sendCodeAnswer = useCallback((code) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "code_answer", code }));
-      setCodeChallenge(null);
-      persistSessionState("ws_codeChallenge", null);
-      setThinking(true);
+      dispatch({ type: "CLEAR_CODE_CHALLENGE" });
     }
   }, []);
 
@@ -263,7 +281,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
       clearInterval(heartbeatTimer.current);
       heartbeatTimer.current = null;
     }
-    reconnectAttempts.current = maxReconnectAttempts; // prevent reconnect on intentional close
+    reconnectAttempts.current = maxReconnectAttempts;
     wsRef.current?.close();
   }, []);
 
@@ -274,10 +292,16 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     return () => disconnect();
   }, [sessionId, connect, disconnect]);
 
+  // Derive connected from connectionStatus for backwards compatibility
+  const connected = state.connectionStatus === "connected";
+
   return {
-    messages, phase, score, gaps, connected,
-    mcqQuestions, codeChallenge, summary, comprehensionMcqs,
-    thinking, connectionStatus, phaseTransition,
+    messages: state.messages, phase: state.phase,
+    score: state.score, gaps: state.gaps, connected,
+    mcqQuestions: state.mcqQuestions, codeChallenge: state.codeChallenge,
+    summary: state.summary, comprehensionMcqs: state.comprehensionMcqs,
+    thinking: state.thinking, connectionStatus: state.connectionStatus,
+    phaseTransition: state.phaseTransition,
     sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
     disconnect,
   };

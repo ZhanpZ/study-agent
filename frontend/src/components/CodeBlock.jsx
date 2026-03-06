@@ -1,24 +1,39 @@
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const customStyle = {
-  ...oneDark,
-  'pre[class*="language-"]': {
-    ...oneDark['pre[class*="language-"]'],
-    background: "rgba(15, 20, 25, 0.8)",
-    margin: 0,
-    borderRadius: "0.5rem",
-    fontSize: "0.8125rem",
-    lineHeight: "1.6",
-  },
-  'code[class*="language-"]': {
-    ...oneDark['code[class*="language-"]'],
-    background: "none",
-    fontSize: "0.8125rem",
-    lineHeight: "1.6",
-  },
-};
+let SyntaxHighlighterComponent = null;
+let customStyle = null;
+let loadPromise = null;
+
+function loadHighlighter() {
+  if (loadPromise) return loadPromise;
+  loadPromise = Promise.all([
+    import("react-syntax-highlighter").then((mod) => mod.Prism),
+    import("react-syntax-highlighter/dist/esm/styles/prism").then((mod) => mod.oneDark),
+  ]).then(([Highlighter, oneDark]) => {
+    SyntaxHighlighterComponent = Highlighter;
+    customStyle = {
+      ...oneDark,
+      'pre[class*="language-"]': {
+        ...oneDark['pre[class*="language-"]'],
+        background: "rgba(15, 20, 25, 0.8)",
+        margin: 0,
+        borderRadius: "0.5rem",
+        fontSize: "0.8125rem",
+        lineHeight: "1.6",
+      },
+      'code[class*="language-"]': {
+        ...oneDark['code[class*="language-"]'],
+        background: "none",
+        fontSize: "0.8125rem",
+        lineHeight: "1.6",
+      },
+    };
+  });
+  return loadPromise;
+}
+
+// Start loading immediately on module import (preload)
+loadHighlighter();
 
 export default function CodeBlock({ children, className, node, ...rest }) {
   const match = /language-(\w+)/.exec(className || "");
@@ -26,6 +41,13 @@ export default function CodeBlock({ children, className, node, ...rest }) {
   const code = String(children).replace(/\n$/, "");
   const isInline = !className && !code.includes("\n");
   const [copied, setCopied] = useState(false);
+  const [loaded, setLoaded] = useState(!!SyntaxHighlighterComponent);
+
+  useEffect(() => {
+    if (!loaded) {
+      loadHighlighter().then(() => setLoaded(true));
+    }
+  }, [loaded]);
 
   if (isInline) {
     return (
@@ -70,15 +92,21 @@ export default function CodeBlock({ children, className, node, ...rest }) {
         </button>
       </div>
       <div className="border border-gray-700 border-t-0 rounded-b-lg overflow-hidden">
-        <SyntaxHighlighter
-          style={customStyle}
-          language={language || "python"}
-          showLineNumbers
-          lineNumberStyle={{ color: "#4b5563", fontSize: "0.75rem", minWidth: "2em" }}
-          wrapLongLines
-        >
-          {code}
-        </SyntaxHighlighter>
+        {loaded && SyntaxHighlighterComponent ? (
+          <SyntaxHighlighterComponent
+            style={customStyle}
+            language={language || "python"}
+            showLineNumbers
+            lineNumberStyle={{ color: "#4b5563", fontSize: "0.75rem", minWidth: "2em" }}
+            wrapLongLines
+          >
+            {code}
+          </SyntaxHighlighterComponent>
+        ) : (
+          <pre className="bg-[rgba(15,20,25,0.8)] rounded-b-lg p-3 text-sm text-gray-300 font-mono overflow-x-auto leading-[1.6]">
+            <code>{code}</code>
+          </pre>
+        )}
       </div>
     </div>
   );
