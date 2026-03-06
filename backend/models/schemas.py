@@ -91,7 +91,7 @@ class QuizHistorySave(BaseModel):
     @field_validator("quiz_type")
     @classmethod
     def validate_quiz_type(cls, v):
-        allowed = {"algorithm", "constraint", "ml_math"}
+        allowed = {"algorithm", "constraint", "ml_math", "dsa_template"}
         if v not in allowed:
             raise ValueError(f"quiz_type must be one of {allowed}")
         return v
@@ -117,7 +117,7 @@ class QuizFeedbackCreate(BaseModel):
     @field_validator("quiz_type")
     @classmethod
     def validate_feedback_quiz_type(cls, v):
-        allowed = {"algorithm", "constraint", "ml_math"}
+        allowed = {"algorithm", "constraint", "ml_math", "dsa_template"}
         if v not in allowed:
             raise ValueError(f"quiz_type must be one of {allowed}")
         return v

@@ -8,10 +8,12 @@ const Review = lazy(() => import("./pages/Review"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AlgorithmQuiz = lazy(() => import("./pages/AlgorithmQuiz"));
 const Notes = lazy(() => import("./pages/Notes"));
+const DSATemplateDrill = lazy(() => import("./pages/DSATemplateDrill"));
 
 const NAV_ITEMS = [
   { path: "/", label: "Study", icon: "\u{1F4D6}" },
   { path: "/algorithm-quiz", label: "Algo Quiz", icon: "\u{1F9E9}" },
+  { path: "/dsa-templates", label: "DSA Drill", icon: "\u{1F3D7}" },
   { path: "/notes", label: "Notes", icon: "\u{1F4DD}" },
   { path: "/review", label: "Review", icon: "\u{1F504}" },
   { path: "/dashboard", label: "Dashboard", icon: "\u{1F4CA}" },
@@ -93,6 +95,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Study />} />
             <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
+            <Route path="/dsa-templates" element={<DSATemplateDrill />} />
             <Route path="/notes" element={<Notes />} />
             <Route path="/review" element={<Review />} />
             <Route path="/dashboard" element={<Dashboard />} />

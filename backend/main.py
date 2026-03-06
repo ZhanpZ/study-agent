@@ -246,6 +246,50 @@ async def get_ml_math_question(topic: str = "all"):
     return {"question": question}
 
 
+# ─── DSA Template Drill Endpoints ────────────────────────────────
+
+from backend.agents.template_drill import (
+    get_all_templates, get_template_by_id, create_template_eval_agent, evaluate_template,
+)
+
+
+@app.get("/api/dsa-templates")
+async def list_dsa_templates(category: str | None = None):
+    """List all DSA templates (without reference implementations)."""
+    return {"templates": get_all_templates(category)}
+
+
+@app.get("/api/dsa-templates/{template_id}")
+async def get_dsa_template(template_id: str):
+    """Get a single DSA template prompt (without reference implementation)."""
+    t = get_template_by_id(template_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {k: v for k, v in t.items() if k != "reference_implementation"}
+
+
+@app.post("/api/dsa-templates/evaluate")
+async def evaluate_dsa_template(body: dict):
+    """Evaluate user's DSA template implementation."""
+    template_id = body.get("template_id")
+    user_code = body.get("code", "")
+    if not template_id or not user_code.strip():
+        raise HTTPException(status_code=400, detail="template_id and code required")
+
+    template = get_template_by_id(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    agent = create_template_eval_agent()
+    evaluation = evaluate_template(agent, template, user_code)
+
+    # Include reference implementation in response (shown after evaluation)
+    evaluation["reference_implementation"] = template["reference_implementation"]
+    evaluation["template_name"] = template["name"]
+
+    return evaluation
+
+
 # ─── Note Cleanup Endpoint ───────────────────────────────────────
 
 
