@@ -70,135 +70,38 @@ def evaluate_understanding(
     return _parse_evaluation(result, previous_score)
 
 
-def generate_mcq(
-    agent: Agent,
-    topic: str,
-    conversation_history: list[dict],
-) -> list[dict]:
-    history_text = "\n".join(
-        f"[{m.get('agent', 'unknown')}]: {m['content']}" for m in conversation_history[-10:]
-    )
-
-    task = Task(
-        description=(
-            f"Generate 4 MCQs to test understanding of '{topic}' for SDE/MLE.\n\n"
-            f"Session context:\n{history_text}\n\n"
-            "Requirements:\n"
-            "- Each tests a different aspect\n"
-            "- One tests 'why' (not just 'what')\n"
-            "- One tests a common misconception in production/interviews\n"
-            "- Frame as real engineering decisions\n\n"
-            "Respond with ONLY valid JSON:\n"
-            '{"questions": [\n'
-            '  {"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct": "A"},\n'
-            "  ...\n]}"
-        ),
-        expected_output="Valid JSON with 4 MCQs.",
-        agent=agent,
-    )
-    result = str(agent.execute_task(task))
-
-    data = extract_json(result)
-    if data and isinstance(data, dict):
-        return data.get("questions", [])
-
-    logger.warning("Failed to parse MCQ JSON for topic '%s' | raw: %s", topic, result[:200])
-    return [
-        {
-            "question": f"What is the key concept behind {topic}?",
-            "options": [
-                "A) It is a fundamental CS concept",
-                "B) It is not related to CS",
-                "C) It is only theoretical",
-                "D) None of the above",
-            ],
-            "correct": "A",
-        }
-    ]
-
-
-def score_mcq(questions: list[dict], answers: list[str]) -> TesterEvaluation:
-    if not questions:
-        return TesterEvaluation(
-            score=0, gaps=["No questions available"], mastered=False,
-            feedback="Could not generate questions.",
-        )
-
-    correct = 0
-    total = len(questions)
-    gaps = []
-
-    for i, q in enumerate(questions):
-        user_answer = answers[i] if i < len(answers) else ""
-        expected = q.get("correct", "")
-        if user_answer.upper().strip() == expected.upper().strip():
-            correct += 1
-        else:
-            gaps.append(f"Missed: {q['question']}")
-
-    score = round((correct / total) * 100)
-    mastered = score >= MASTERY_SCORE_THRESHOLD and len(gaps) <= 1
-
-    feedback = f"You got {correct}/{total} correct."
-    if mastered:
-        feedback += " Solid understanding."
-    elif score >= 50:
-        feedback += " Review the missed areas."
-    else:
-        feedback += " Revisit this topic."
-
-    return TesterEvaluation(
-        score=score, gaps=gaps, mastered=mastered, feedback=feedback,
-    )
-
-
 def generate_code_challenge(
     agent: Agent,
     topic: str,
     conversation_history: list[dict],
-    mode: str = "leetcode",
+    difficulty: str = "medium",
 ) -> dict:
-    # For leetcode mode, fetch a real LeetCode problem first
-    if mode == "leetcode":
-        from backend.services.leetcode_fetcher import fetch_leetcode_problem
+    from backend.services.leetcode_fetcher import fetch_leetcode_problem
 
-        real_problem = fetch_leetcode_problem(topic)
-        if real_problem:
-            logger.info(
-                "Using real LeetCode problem: %s (%s)",
-                real_problem.get("title"), real_problem.get("difficulty"),
-            )
-            return real_problem
+    real_problem = fetch_leetcode_problem(topic, difficulty=difficulty)
+    if real_problem:
+        logger.info(
+            "Using real LeetCode problem: %s (%s)",
+            real_problem.get("title"), real_problem.get("difficulty"),
+        )
+        return real_problem
 
-        logger.warning("Failed to fetch real LeetCode problem for '%s', falling back to generated", topic)
+    logger.warning("Failed to fetch real LeetCode problem for '%s', falling back to generated", topic)
 
-    # Fallback: generate a problem (always used for industrial mode)
+    # Fallback: generate a problem aligned with the session's canonical solutions
     history_text = "\n".join(
         f"[{m.get('agent', 'unknown')}]: {m['content']}" for m in conversation_history[-10:]
     )
 
-    if mode == "industrial":
-        problem_instruction = (
-            "Requirements:\n"
-            "- Design a clean class, API, or module\n"
-            "- Test understanding of discussed design patterns\n"
-            "- Include error handling and edge cases\n"
-            "- Solvable in 20-40 lines of production code\n"
-        )
-    else:  # leetcode fallback
-        problem_instruction = (
-            "Requirements:\n"
-            "- Apply algorithm patterns from the session\n"
-            "- Clear problem statement with input/output format\n"
-            "- Include a twist from the standard template\n"
-            "- Solvable in 10-30 lines\n"
-        )
-
     task = Task(
         description=(
-            f"Create a coding problem about '{topic}' based on the session.\n\n"
+            f"Create a LeetCode-style coding problem about '{topic}' "
+            f"at {difficulty} difficulty, aligned with the approaches discussed in the session.\n\n"
             f"Session context:\n{history_text}\n\n"
-            f"{problem_instruction}\n"
+            "Requirements:\n"
+            "- Apply algorithm patterns from the session\n"
+            "- Clear problem statement with input/output format and examples\n"
+            "- Solvable in 10-30 lines of Python\n\n"
             "Respond with ONLY valid JSON:\n"
             '{"problem": "Full problem statement...", "hints": ["hint1", "hint2"]}'
         ),
@@ -227,34 +130,35 @@ def evaluate_code(
     challenge: dict,
     user_code: str,
     conversation_history: list[dict],
-    mode: str = "leetcode",
 ) -> TesterEvaluation:
-    if mode == "industrial":
-        criteria = (
-            "1. Correctness\n"
-            "2. Architecture and abstractions\n"
-            "3. Design patterns (SOLID, etc.)\n"
-            "4. Error handling\n"
-            "5. Production readiness\n"
-        )
-    else:  # leetcode
-        criteria = (
-            "1. Correctness\n"
-            "2. Edge case handling\n"
-            "3. Code quality\n"
-            "4. Time/space complexity optimality\n"
-            "5. Pattern application\n"
-        )
+    # Extract the professor's canonical explanation (first assistant message) to ground evaluation
+    canonical = next(
+        (m["content"] for m in conversation_history
+         if m.get("agent") == "professor" and m.get("role") == "assistant"),
+        ""
+    )
+    canonical_section = (
+        f"Canonical approaches and complexity (from the professor's explanation):\n{canonical[:2000]}\n\n"
+        if canonical else ""
+    )
 
     task = Task(
         description=(
-            f"Evaluate code solution for '{topic}':\n\n"
+            f"Evaluate this code solution for '{topic}'.\n\n"
+            f"{canonical_section}"
             f"Problem: {challenge.get('problem', topic)}\n\n"
-            f"Code:\n```\n{user_code}\n```\n\n"
-            f"Criteria:\n{criteria}\n"
+            f"Student's code:\n```python\n{user_code}\n```\n\n"
+            "Evaluation criteria:\n"
+            "1. Correctness — does it solve the problem?\n"
+            "2. Complexity — does it match or approach the optimal time/space complexity "
+            "stated in the canonical explanation above?\n"
+            "3. Edge case handling\n"
+            "4. Code quality and readability\n"
+            "5. Pattern application — does the student use the right algorithmic pattern?\n\n"
             "Respond with ONLY valid JSON:\n"
             '{"score": <0-100>, "gaps": ["gap1", "gap2"], "mastered": <true/false>, "feedback": "..."}\n\n'
-            "mastered=true only if score >= 80 with no critical issues."
+            "mastered=true only if score >= 80 with no critical issues. "
+            "Be specific in gaps — name the exact complexity, pattern, or sub-problem missed."
         ),
         expected_output='Valid JSON: {"score": <number>, "gaps": [...], "mastered": <bool>, "feedback": "..."}',
         agent=agent,

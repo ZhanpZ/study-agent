@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import MessageBubble from "./MessageBubble";
 import PhaseIndicator from "./PhaseIndicator";
-import MCQPanel from "./MCQPanel";
 import ComprehensionPanel from "./ComprehensionPanel";
 import CodeChallengePanel from "./CodeChallengePanel";
 import ReactMarkdown from "react-markdown";
@@ -67,7 +66,7 @@ export default function Chat({
   const isTeachPhase = phase === "teach";
   const isExplainDone = phase === "explain_done";
   const canType = isTeachPhase || isExplainDone;
-  const isCodeMode = mode !== "concept";
+  const isCodeMode = true;
   const isComplete = phase === "complete";
 
   const showComprehensionPanel =
@@ -242,13 +241,6 @@ export default function Chat({
                     <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-blue-400"></span>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* MCQ panel */}
-            {phase === "quiz" && mcqQuestions && (
-              <div className="my-4">
-                <MCQPanel questions={mcqQuestions} onSubmit={onSubmitMCQ} />
               </div>
             )}
 

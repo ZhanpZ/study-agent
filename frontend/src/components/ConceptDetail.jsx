@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useToast } from "./Toast";
-import { MODE_CONFIG } from "../constants/modeConfig";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function ConceptDetail({ conceptId, conceptName, score, onClose }) {
@@ -121,10 +120,8 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium border ${
-                        (MODE_CONFIG[session.mode] || MODE_CONFIG.concept).badgeLight
-                      }`}>
-                        {(MODE_CONFIG[session.mode] || MODE_CONFIG.concept).label}
+                      <span className="text-[11px] px-2 py-0.5 rounded-md font-medium border bg-amber-500/15 text-amber-400 border-amber-500/25">
+                        LeetCode
                       </span>
                       <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium border ${
                         session.phase === "complete"

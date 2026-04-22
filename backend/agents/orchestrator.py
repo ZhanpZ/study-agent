@@ -3,8 +3,7 @@ from dataclasses import dataclass, field
 from backend.agents.professor import create_professor_agent, explain_concept, answer_followup
 from backend.agents.student import create_student_agent, ask_questions
 from backend.agents.tester import (
-    create_tester_agent, evaluate_understanding, generate_mcq, score_mcq,
-    generate_code_challenge, evaluate_code,
+    create_tester_agent, generate_code_challenge, evaluate_code,
 )
 from backend.models.schemas import TesterEvaluation
 from backend.config import MAX_TEACH_ROUNDS, MASTERY_SCORE_THRESHOLD, MIN_TEACH_BEFORE_EVAL, EVAL_EVERY_N_ROUNDS
@@ -15,7 +14,6 @@ class Phase(str, Enum):
     EXPLAIN_DONE = "explain_done"  # Professor explained; user can ask follow-ups
     TEACH = "teach"
     EVALUATE = "evaluate"
-    QUIZ = "quiz"  # MCQ phase for concept mode
     COMPLETE = "complete"
     REVIEW = "review"
 
@@ -23,15 +21,15 @@ class Phase(str, Enum):
 @dataclass
 class SessionState:
     topic: str
-    mode: str = "concept"  # "concept", "industrial", or "leetcode"
+    mode: str = "leetcode"
+    difficulty: str = "medium"
     phase: Phase = Phase.EXPLAIN
     skill_level: float = 0.0
     conversation_history: list[dict] = field(default_factory=list)
     teach_rounds: int = 0
     max_teach_rounds: int = MAX_TEACH_ROUNDS
     last_evaluation: TesterEvaluation | None = None
-    mcq_questions: list[dict] | None = None  # stored MCQs for scoring
-    code_challenge: dict | None = None  # stored code challenge for evaluation
+    code_challenge: dict | None = None
 
 
 _professor_agent: "Agent | None" = None
@@ -67,9 +65,9 @@ class Orchestrator:
         self.tester = _get_tester()
 
     def start_session(
-        self, topic: str, skill_level: float = 0.0, mode: str = "concept"
+        self, topic: str, skill_level: float = 0.0, difficulty: str = "medium"
     ) -> SessionState:
-        return SessionState(topic=topic, skill_level=skill_level, mode=mode)
+        return SessionState(topic=topic, skill_level=skill_level, difficulty=difficulty)
 
     def process_message(
         self, state: SessionState, user_message: str | None = None
@@ -85,25 +83,10 @@ class Orchestrator:
 
         elif state.phase == Phase.TEACH:
             if user_message is None:
-                if state.mode == "industrial":
-                    return (
-                        "Now it's your turn! Explain the production code I just showed you about "
-                        f"'{state.topic}' — walk me through the design decisions, "
-                        "why it's structured this way, and what patterns are being used.",
-                        "student",
-                        state,
-                    )
-                if state.mode == "leetcode":
-                    return (
-                        "Now it's your turn! Explain the algorithm I just showed you for "
-                        f"'{state.topic}' — walk me through the approach, "
-                        "why it works, and what the time/space complexity is.",
-                        "student",
-                        state,
-                    )
                 return (
-                    "Now it's your turn! Teach me what you just learned about "
-                    f"'{state.topic}' as if I'm a fellow engineer who knows nothing about it.",
+                    "Now it's your turn! Explain the algorithm I just showed you for "
+                    f"'{state.topic}' — walk me through the approach, "
+                    "why it works, and what the time/space complexity is.",
                     "student",
                     state,
                 )
@@ -122,7 +105,6 @@ class Orchestrator:
             self.professor,
             state.topic,
             state.skill_level,
-            mode=state.mode,
         )
         state.conversation_history.append({
             "role": "assistant",
@@ -135,7 +117,6 @@ class Orchestrator:
     def _handle_explain_followup(
         self, state: SessionState, user_message: str | None
     ) -> tuple[str, str, SessionState]:
-        """Handle follow-up questions during the explain phase."""
         if not user_message:
             return ("Feel free to ask any questions, or click 'Ready to Teach' when you're ready!", "system", state)
 
@@ -151,25 +132,18 @@ class Orchestrator:
             user_message,
             state.conversation_history,
             state.skill_level,
-            mode=state.mode,
         )
         state.conversation_history.append({
             "role": "assistant",
             "agent": "professor",
             "content": response,
         })
-        # Stay in EXPLAIN_DONE — user can keep asking or click Ready to Teach
         return (response, "professor", state)
 
     def transition_to_teach(self, state: SessionState) -> SessionState:
         """Transition from EXPLAIN_DONE to TEACH phase."""
         state.phase = Phase.TEACH
         return state
-
-    def transition_to_evaluate(self, state: SessionState) -> tuple[str, str, SessionState]:
-        """Skip TEACH and go directly to EVALUATE (used for leetcode mode)."""
-        state.phase = Phase.EVALUATE
-        return self._handle_evaluate(state)
 
     def _handle_teach(
         self, state: SessionState, user_message: str
@@ -187,14 +161,13 @@ class Orchestrator:
             state.phase = Phase.EVALUATE
             return self._handle_evaluate(state)
 
-        # Student asks follow-up questions
         response = ask_questions(
             self.student,
             state.topic,
             user_message,
             state.conversation_history,
             state.skill_level,
-            mode=state.mode,
+            mode="leetcode",
         )
         state.conversation_history.append({
             "role": "assistant",
@@ -204,39 +177,14 @@ class Orchestrator:
         return (response, "student", state)
 
     def _handle_evaluate(self, state: SessionState) -> tuple[str, str, SessionState]:
-        if state.mode == "concept":
-            return self._handle_evaluate_concept(state)
-        else:  # industrial and leetcode both use code evaluation
-            return self._handle_evaluate_code(state)
-
-    def _handle_evaluate_concept(self, state: SessionState) -> tuple[str, str, SessionState]:
-        # Generate MCQs for concept mode
-        mcq_data = generate_mcq(
-            self.tester,
-            state.topic,
-            state.conversation_history,
-        )
-        state.mcq_questions = mcq_data
-        state.phase = Phase.QUIZ
-        return ("__MCQ__", "tester", state)
-
-    def _handle_evaluate_code(self, state: SessionState) -> tuple[str, str, SessionState]:
-        # Generate a coding challenge
         challenge = generate_code_challenge(
             self.tester,
             state.topic,
             state.conversation_history,
-            mode=state.mode,
+            difficulty=state.difficulty,
         )
         state.code_challenge = challenge
         return ("__CODE_CHALLENGE__", "tester", state)
-
-    def process_mcq_answers(
-        self, state: SessionState, answers: list[str]
-    ) -> tuple[str, str, SessionState]:
-        """Score MCQ answers and return evaluation."""
-        evaluation = score_mcq(state.mcq_questions, answers)
-        return self._finalize_evaluation(state, evaluation)
 
     def process_code_answer(
         self, state: SessionState, code: str
@@ -248,7 +196,6 @@ class Orchestrator:
             state.code_challenge,
             code,
             state.conversation_history,
-            mode=state.mode,
         )
         return self._finalize_evaluation(state, evaluation)
 
@@ -273,18 +220,12 @@ class Orchestrator:
         if evaluation.mastered:
             state.phase = Phase.COMPLETE
             feedback += "You've demonstrated strong understanding! This concept is now mastered."
-        elif state.mode == "leetcode":
-            # Leetcode has no teach phase — complete after evaluation
-            state.phase = Phase.COMPLETE
-            feedback += (
-                "Session complete! Review the gaps above and practice similar problems "
-                "to strengthen your understanding."
-            )
         else:
             state.phase = Phase.TEACH
             feedback += (
-                "Let's continue practicing. Try explaining the areas I identified "
-                "as gaps. Focus especially on the 'why' behind these concepts."
+                "Let's keep going. Explain the gaps above — focus on the 'why' "
+                "behind each concept. The code challenge will come again once you've "
+                "taught through them."
             )
 
         state.conversation_history.append({

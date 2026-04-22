@@ -1,5 +1,29 @@
 # Development Diary
 
+## 2026-04-21
+**Task:** Pivoted project to a focused LeetCode-grounded Feynman learning loop, stripping all features beaten by NotebookLM.
+
+**Files Changed:**
+- `backend/agents/quiz_generator.py` — deleted (algorithm quiz, constraint quiz, ML math)
+- `backend/agents/template_drill.py` — deleted (DSA template drill)
+- `backend/agents/note_cleaner.py` — deleted (note cleanup agent)
+- `frontend/src/pages/AlgorithmQuiz.jsx` — deleted
+- `frontend/src/pages/MLMathDrill.jsx` — deleted
+- `frontend/src/pages/DSATemplateDrill.jsx` — deleted
+- `frontend/src/pages/Notes.jsx` — deleted
+- `backend/main.py` — removed all cut endpoints; hardcoded mode to "leetcode"; added `difficulty` field to session start
+- `backend/models/schemas.py` — replaced `mode` field with `difficulty` in `SessionStart`; removed `QuizHistorySave`, `QuizFeedbackCreate`, `NoteCleanRequest`
+- `backend/agents/orchestrator.py` — re-enabled TEACH phase for LeetCode (was previously skipped); removed concept/industrial/MCQ branches; `SessionState` now has `difficulty` instead of `mode` variants
+- `backend/agents/professor.py` — updated explanation prompt to always enumerate canonical solutions with complexity (grounds the tester evaluation)
+- `backend/agents/tester.py` — removed `generate_mcq` and `score_mcq`; updated `evaluate_code` to reference canonical solutions from conversation history; updated `generate_code_challenge` to use `difficulty` parameter
+- `frontend/src/App.jsx` — removed routes/nav for AlgorithmQuiz, DSATemplateDrill, Notes; kept Study, Review, Dashboard
+- `frontend/src/pages/Study.jsx` — replaced 3-mode selector with Easy/Medium/Hard difficulty selector; hardcoded mode as "leetcode"
+- `frontend/src/pages/Dashboard.jsx` — removed quiz history section and all related state; simplified to Study Progress + Spaced Review cards
+- `frontend/src/components/Chat.jsx` — removed MCQPanel import and quiz phase rendering
+- `frontend/src/components/ConceptDetail.jsx` — replaced dynamic MODE_CONFIG badge with hardcoded LeetCode badge
+
+**Context:** The project was over-scoped relative to what NotebookLM already handles. The remaining core is: explain a real LeetCode problem (with canonical solutions stated by the professor) → teach it back (Feynman loop) → solve the real problem → get evaluated against known correct approaches → SM-2 schedules review. This is defensible and distinct from NotebookLM.
+
 ## 2026-03-01
 **Task:** Added micro-interactions across the frontend to improve attention span and engagement.
 

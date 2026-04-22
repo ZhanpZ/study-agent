@@ -4,7 +4,6 @@ import { useToast } from "../components/Toast";
 import useWebSocket from "../hooks/useWebSocket";
 import Chat from "../components/Chat";
 import { validateTopic, MIN_TOPIC_LENGTH, MAX_TOPIC_LENGTH } from "../utils/validation";
-import { MODE_CONFIG } from "../constants/modeConfig";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function Study() {
@@ -16,7 +15,7 @@ export default function Study() {
     clearSession,
   } = useSession();
   const { addToast } = useToast();
-  const [mode, setMode] = useState("concept");
+  const [difficulty, setDifficulty] = useState("medium");
   const [loading, setLoading] = useState(false);
   const [initialMessages, setInitialMessages] = useState([]);
   const [restoring, setRestoring] = useState(false);
@@ -102,12 +101,12 @@ export default function Study() {
       const res = await fetchWithTimeout("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: trimmed, mode }),
+        body: JSON.stringify({ topic: trimmed, difficulty }),
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
       setSessionTopic(trimmed);
-      setSessionMode(mode);
+      setSessionMode("leetcode");
       setSessionId(data.id);
       setInitialMessages([]);
       hasRestored.current = true;
@@ -132,37 +131,37 @@ export default function Study() {
     sessionStorage.removeItem("ws_sessionId");
   };
 
+  const DIFFICULTY_CONFIG = {
+    easy:   { label: "Easy",   color: "bg-emerald-600 border-emerald-500", inactive: "border-focus-border hover:border-emerald-500/50", badge: "text-emerald-400" },
+    medium: { label: "Medium", color: "bg-amber-600 border-amber-500",     inactive: "border-focus-border hover:border-amber-500/50",   badge: "text-amber-400" },
+    hard:   { label: "Hard",   color: "bg-red-600 border-red-500",         inactive: "border-focus-border hover:border-red-500/50",     badge: "text-red-400" },
+  };
+
   // Topic selection screen
   if (!sessionId) {
-    const cfg = MODE_CONFIG[mode];
+    const diffCfg = DIFFICULTY_CONFIG[difficulty];
     return (
       <div className="flex flex-col items-center justify-center min-h-[65vh] px-4">
         <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1 text-center">
-          What do you want to learn?
+          What do you want to practice?
         </h2>
         <p className="text-focus-text-muted mb-8 text-center text-sm">
-          Pick a learning mode and enter your topic.
+          Enter an algorithm topic. The professor will explain it, then you teach it back.
         </p>
 
-        {/* Mode cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8 w-full max-w-lg">
-          {Object.entries(MODE_CONFIG).map(([key, c]) => (
+        {/* Difficulty selector */}
+        <div className="flex gap-3 mb-8">
+          {Object.entries(DIFFICULTY_CONFIG).map(([key, c]) => (
             <button
               key={key}
-              onClick={() => setMode(key)}
-              className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border text-center transition-all ${
-                mode === key
+              onClick={() => setDifficulty(key)}
+              className={`px-5 py-2 rounded-lg border text-sm font-semibold transition-all ${
+                difficulty === key
                   ? `${c.color} text-white shadow-lg`
                   : `bg-focus-surface ${c.inactive} text-focus-text-muted`
               }`}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={mode === key ? "text-white" : c.iconColor}>
-                <path d={c.icon}/>
-              </svg>
-              <span className="text-sm font-semibold">{c.label}</span>
-              <span className={`text-[11px] leading-tight ${mode === key ? "text-white/70" : "text-focus-text-dim"}`}>
-                {c.description}
-              </span>
+              {c.label}
             </button>
           ))}
         </div>
@@ -183,7 +182,7 @@ export default function Study() {
                   el.scrollLeft = el.scrollWidth;
                 });
               }}
-              placeholder={cfg.placeholder}
+              placeholder="e.g. Two Sum, BFS, Sliding Window, Merge Sort..."
               maxLength={MAX_TOPIC_LENGTH}
               className={`w-full bg-focus-surface border rounded-xl px-4 py-3.5 pr-24 text-sm
                          text-white placeholder-gray-500 focus:outline-none transition-all
@@ -197,7 +196,7 @@ export default function Study() {
               type="submit"
               disabled={!topic.trim() || loading}
               className={`absolute right-1.5 top-1.5 bottom-1.5 px-5 text-white text-sm font-medium rounded-lg
-                         disabled:opacity-40 transition-all flex items-center gap-2 ${cfg.color}`}
+                         disabled:opacity-40 transition-all flex items-center gap-2 ${diffCfg.color}`}
             >
               {loading ? (
                 <>
@@ -244,14 +243,12 @@ export default function Study() {
     );
   }
 
-  const activeCfg = MODE_CONFIG[activeMode] || MODE_CONFIG.concept;
-
   // Active session
   return (
     <div className="h-[calc(100vh-120px)]">
       <div className="flex items-center justify-between mb-3">
-        <span className={`text-xs px-2.5 py-1 rounded-lg font-medium ${activeCfg.badge}`}>
-          {activeCfg.label} Mode
+        <span className="text-xs px-2.5 py-1 rounded-lg font-medium bg-amber-900/40 text-amber-400 border border-amber-700/50">
+          LeetCode Mode
         </span>
         <button
           onClick={handleNewSession}

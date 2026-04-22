@@ -4,7 +4,7 @@ from datetime import datetime
 
 class SessionStart(BaseModel):
     topic: str = Field(..., min_length=1, max_length=500)
-    mode: str = "concept"  # "concept", "industrial", or "leetcode"
+    difficulty: str = "medium"  # "easy", "medium", or "hard"
 
     @field_validator("topic")
     @classmethod
@@ -14,11 +14,11 @@ class SessionStart(BaseModel):
             raise ValueError("topic must not be empty")
         return v
 
-    @field_validator("mode")
+    @field_validator("difficulty")
     @classmethod
-    def validate_mode(cls, v):
-        if v not in ("concept", "industrial", "leetcode"):
-            raise ValueError("mode must be 'concept', 'industrial', or 'leetcode'")
+    def validate_difficulty(cls, v):
+        if v not in ("easy", "medium", "hard"):
+            raise ValueError("difficulty must be 'easy', 'medium', or 'hard'")
         return v
 
 
@@ -81,43 +81,3 @@ class ConceptMerge(BaseModel):
     target_id: int
 
 
-class QuizHistorySave(BaseModel):
-    quiz_type: str = Field(..., max_length=30)
-    topic: str = Field(default="all", max_length=255)
-    questions: list = Field(default_factory=list)
-    answers: dict = Field(default_factory=dict)
-    score: float | None = None
-
-    @field_validator("quiz_type")
-    @classmethod
-    def validate_quiz_type(cls, v):
-        allowed = {"algorithm", "constraint", "ml_math", "dsa_template"}
-        if v not in allowed:
-            raise ValueError(f"quiz_type must be one of {allowed}")
-        return v
-
-
-class NoteCleanRequest(BaseModel):
-    raw_text: str = Field(..., min_length=1, max_length=10000)
-
-    @field_validator("raw_text")
-    @classmethod
-    def validate_raw_text(cls, v):
-        v = v.strip()
-        if not v:
-            raise ValueError("raw_text must not be empty")
-        return v
-
-
-class QuizFeedbackCreate(BaseModel):
-    quiz_type: str = Field(..., max_length=30)
-    question_data: dict = Field(default_factory=dict)
-    reported_issue: str = Field(default="", max_length=2000)
-
-    @field_validator("quiz_type")
-    @classmethod
-    def validate_feedback_quiz_type(cls, v):
-        allowed = {"algorithm", "constraint", "ml_math", "dsa_template"}
-        if v not in allowed:
-            raise ValueError(f"quiz_type must be one of {allowed}")
-        return v
