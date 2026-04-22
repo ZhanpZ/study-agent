@@ -3,6 +3,7 @@ import { useSession } from "../context/SessionContext";
 import { useToast } from "../components/Toast";
 import useWebSocket from "../hooks/useWebSocket";
 import Chat from "../components/Chat";
+import SpinnerIcon from "../components/SpinnerIcon";
 import { validateTopic, MIN_TOPIC_LENGTH, MAX_TOPIC_LENGTH } from "../utils/validation";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
 
@@ -76,7 +77,7 @@ export default function Study() {
   }, [phase, restoredPhase]);
 
   const activePhase = restoredPhase || phase;
-  const activeMode = sessionMode || mode;
+  const activeMode = sessionMode || "leetcode";
 
   const handleTopicChange = (e) => {
     const val = e.target.value;
@@ -198,16 +199,7 @@ export default function Study() {
               className={`absolute right-1.5 top-1.5 bottom-1.5 px-5 text-white text-sm font-medium rounded-lg
                          disabled:opacity-40 transition-all flex items-center gap-2 ${diffCfg.color}`}
             >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                  </svg>
-                  Starting...
-                </>
-              ) : (
-                "Start"
-              )}
+              {loading ? (<><SpinnerIcon className="h-4 w-4" /> Starting...</>) : "Start"}
             </button>
           </div>
           <div className="flex items-center justify-between mt-2 px-1">
@@ -234,9 +226,7 @@ export default function Study() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex items-center gap-3 text-gray-400">
-          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12a9 9 0 11-6.219-8.56"/>
-          </svg>
+          <SpinnerIcon className="h-5 w-5" />
           Restoring session...
         </div>
       </div>

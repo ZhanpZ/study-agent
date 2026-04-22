@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from backend.config import MODEL_FAST
+from backend.utils import format_history, skill_level_label
 
 
 def create_student_agent() -> Agent:
@@ -30,14 +31,8 @@ def ask_questions(
     skill_level: float,
     mode: str = "concept",
 ) -> str:
-    difficulty = "basic" if skill_level < 30 else "probing" if skill_level < 70 else "challenging"
-
-    history_text = ""
-    if conversation_history:
-        history_text = "Previous conversation:\n"
-        for msg in conversation_history[-10:]:
-            role = msg.get("agent", msg.get("role", "unknown"))
-            history_text += f"[{role}]: {msg['content']}\n"
+    difficulty = skill_level_label(skill_level, "basic", "probing", "challenging")
+    history_text = format_history(conversation_history, limit=10)
 
     if mode == "industrial":
         focus = (

@@ -140,11 +140,6 @@ class Orchestrator:
         })
         return (response, "professor", state)
 
-    def transition_to_teach(self, state: SessionState) -> SessionState:
-        """Transition from EXPLAIN_DONE to TEACH phase."""
-        state.phase = Phase.TEACH
-        return state
-
     def _handle_teach(
         self, state: SessionState, user_message: str
     ) -> tuple[str, str, SessionState]:

@@ -3,6 +3,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useToast } from "./Toast";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
+import SpinnerIcon from "./SpinnerIcon";
+import { PROSE_BASE } from "../utils/proseClass";
 
 export default function ConceptDetail({ conceptId, conceptName, score, onClose }) {
   const [sessions, setSessions] = useState([]);
@@ -100,9 +102,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {loading ? (
             <div className="flex items-center justify-center py-8 gap-3 text-focus-text-muted">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12a9 9 0 11-6.219-8.56"/>
-              </svg>
+              <SpinnerIcon />
               Loading sessions...
             </div>
           ) : sessions.length === 0 ? (
@@ -152,18 +152,11 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                   <div className="mt-2 bg-focus-surface border border-focus-border rounded-xl p-4">
                     {loadingSummary ? (
                       <div className="flex items-center gap-2 text-sm text-focus-text-muted py-2">
-                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                        </svg>
+                        <SpinnerIcon className="h-3.5 w-3.5" />
                         Loading notes...
                       </div>
                     ) : summaryContent ? (
-                      <div className="text-sm text-gray-200 prose prose-invert prose-sm max-w-none
-                                      prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
-                                      prose-p:my-1 prose-li:my-0 prose-ul:my-1 prose-ol:my-1
-                                      prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:rounded
-                                      prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
-                                      prose-strong:text-gray-100">
+                      <div className={PROSE_BASE}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {summaryContent}
                         </ReactMarkdown>

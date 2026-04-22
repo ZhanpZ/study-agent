@@ -8,6 +8,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import CodeBlock from "./CodeBlock";
+import SpinnerIcon from "./SpinnerIcon";
+import { PROSE_BASE } from "../utils/proseClass";
 
 export default function Chat({
   messages, phase, score, gaps, connected, mode,
@@ -66,7 +68,7 @@ export default function Chat({
   const isTeachPhase = phase === "teach";
   const isExplainDone = phase === "explain_done";
   const canType = isTeachPhase || isExplainDone;
-  const isCodeMode = true;
+  const isCodeMode = isLeetcode;
   const isComplete = phase === "complete";
 
   const showComprehensionPanel =
@@ -126,9 +128,7 @@ export default function Chat({
       {/* Connection status banner */}
       {connectionStatus === "reconnecting" && (
         <div className="mb-3 px-4 py-2.5 bg-amber-950/80 border border-amber-800/60 rounded-xl text-xs text-amber-300 flex items-center gap-2.5">
-          <svg className="animate-spin h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12a9 9 0 11-6.219-8.56"/>
-          </svg>
+          <SpinnerIcon className="h-3.5 w-3.5 shrink-0" />
           Reconnecting to session...
         </div>
       )}
@@ -189,12 +189,7 @@ export default function Chat({
             </svg>
             <span className="text-sm font-semibold text-focus-text">Session Notes</span>
           </div>
-          <div className="p-4 text-sm text-gray-200 prose prose-invert prose-sm max-w-none
-                          prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
-                          prose-p:my-1.5 prose-li:my-0 prose-ul:my-1.5 prose-ol:my-1.5
-                          prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-                          prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
-                          prose-strong:text-gray-100 prose-a:text-indigo-400 max-h-80 overflow-y-auto">
+          <div className={`p-4 max-h-80 overflow-y-auto ${PROSE_BASE}`}>
             <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]} components={{ code: CodeBlock }}>
               {summary}
             </ReactMarkdown>

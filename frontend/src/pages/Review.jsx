@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
+import SpinnerIcon from "../components/SpinnerIcon";
 
 export default function Review() {
   const [reviews, setReviews] = useState([]);
@@ -28,9 +29,7 @@ export default function Review() {
   if (loading) {
     return (
       <div className="flex items-center justify-center mt-20 gap-3">
-        <svg className="animate-spin h-5 w-5 text-focus-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 12a9 9 0 11-6.219-8.56"/>
-        </svg>
+        <SpinnerIcon className="h-5 w-5 text-focus-text-muted" />
         <span className="text-focus-text-muted">Loading reviews...</span>
       </div>
     );
@@ -59,9 +58,11 @@ export default function Review() {
     );
   }
 
-  const dueItems = reviews.filter((r) => r.status === "due");
-  const newItems = reviews.filter((r) => r.status === "new");
-  const upcomingItems = reviews.filter((r) => r.status === "upcoming");
+  const { due: dueItems = [], new: newItems = [], upcoming: upcomingItems = [] } =
+    reviews.reduce((acc, r) => {
+      (acc[r.status] ??= []).push(r);
+      return acc;
+    }, {});
 
   const statusConfig = {
     due: {

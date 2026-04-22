@@ -4,16 +4,14 @@ import logging
 import time
 from collections import OrderedDict
 from crewai import Agent, Task
-from backend.config import MODEL_STRONG, MODEL_FAST, MASTERY_SCORE_THRESHOLD, LLM_COMPREHENSION
+from backend.config import MODEL_STRONG, MODEL_FAST, MASTERY_SCORE_THRESHOLD, LLM_COMPREHENSION, MCQ_CACHE_TTL, MCQ_CACHE_MAX_SIZE
 from backend.models.schemas import TesterEvaluation
-from backend.utils import extract_json
+from backend.utils import extract_json, format_history
 
 logger = logging.getLogger(__name__)
 
-# Bounded LRU cache for comprehension MCQs (max 128 entries, 24h TTL)
+# Bounded LRU cache for comprehension MCQs
 _mcq_cache: OrderedDict[str, tuple[float, list[dict]]] = OrderedDict()
-_MCQ_CACHE_TTL = 86400  # 24 hours
-_MCQ_CACHE_MAX_SIZE = 128
 
 
 def create_tester_agent() -> Agent:
@@ -41,10 +39,7 @@ def evaluate_understanding(
     conversation_history: list[dict],
     previous_score: float,
 ) -> TesterEvaluation:
-    history_text = ""
-    for msg in conversation_history:
-        role = msg.get("agent", msg.get("role", "unknown"))
-        history_text += f"[{role}]: {msg['content']}\n"
+    history_text = format_history(conversation_history, limit=None)
 
     task = Task(
         description=(
@@ -89,9 +84,7 @@ def generate_code_challenge(
     logger.warning("Failed to fetch real LeetCode problem for '%s', falling back to generated", topic)
 
     # Fallback: generate a problem aligned with the session's canonical solutions
-    history_text = "\n".join(
-        f"[{m.get('agent', 'unknown')}]: {m['content']}" for m in conversation_history[-10:]
-    )
+    history_text = format_history(conversation_history, limit=10)
 
     task = Task(
         description=(
@@ -195,7 +188,7 @@ def generate_comprehension_mcqs(
     now = time.time()
     if cache_key in _mcq_cache:
         cached_time, cached_result = _mcq_cache[cache_key]
-        if now - cached_time < _MCQ_CACHE_TTL:
+        if now - cached_time < MCQ_CACHE_TTL:
             _mcq_cache.move_to_end(cache_key)
             return cached_result
         else:
@@ -234,7 +227,7 @@ def generate_comprehension_mcqs(
         if questions:
             _mcq_cache[cache_key] = (now, questions)
             # Evict oldest entries if over capacity
-            while len(_mcq_cache) > _MCQ_CACHE_MAX_SIZE:
+            while len(_mcq_cache) > MCQ_CACHE_MAX_SIZE:
                 _mcq_cache.popitem(last=False)
         return questions
 

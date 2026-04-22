@@ -1,7 +1,27 @@
 import json
 import logging
+from backend.config import HISTORY_CONTEXT_WINDOW
 
 logger = logging.getLogger(__name__)
+
+
+def format_history(messages: list[dict], limit: int | None = HISTORY_CONTEXT_WINDOW) -> str:
+    """Format conversation history as [agent]: content lines for LLM prompts."""
+    msgs = messages[-limit:] if limit else messages
+    return "".join(
+        f"[{m.get('agent', m.get('role', 'unknown'))}]: {m['content']}\n"
+        for m in msgs
+    )
+
+
+def skill_level_label(
+    score: float,
+    low: str = "beginner",
+    mid: str = "intermediate",
+    high: str = "advanced",
+) -> str:
+    """Map a numeric skill score to a descriptive label using standard thresholds."""
+    return low if score < 30 else mid if score < 70 else high
 
 
 def extract_json(text: str) -> dict | list | None:

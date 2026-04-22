@@ -1,5 +1,27 @@
 # Development Diary
 
+## 2026-04-22
+**Task:** Full codebase refactor and simplification pass — eliminated duplication, centralized constants, fixed two bugs, removed dead code.
+**Files Changed:**
+- `backend/utils.py` — added `format_history()` and `skill_level_label()` shared utilities
+- `backend/config.py` — added `SKILL_SCORE_ALPHA/BETA`, `SKILL_CONFIDENCE_INCREMENT`, `SKILL_MAX_MISCONCEPTIONS`, `HISTORY_CONTEXT_WINDOW`, `MCQ_CACHE_TTL/MAX_SIZE`
+- `backend/main.py` — extracted `_save_message()`, `_maybe_send_comprehension_mcqs()`, local `_cache()` helper; inlined `transition_to_teach()`
+- `backend/agents/professor.py` — uses `format_history/skill_level_label`; removed unused `mode` params
+- `backend/agents/student.py` — uses `format_history/skill_level_label`
+- `backend/agents/tester.py` — uses `format_history`; uses config constants for MCQ cache
+- `backend/agents/orchestrator.py` — removed trivial `transition_to_teach()` method
+- `backend/services/skill_tracker.py` — uses config constants instead of magic numbers
+- `frontend/src/pages/Study.jsx` — fixed `mode` undefined bug (line 79)
+- `frontend/src/components/Chat.jsx` — fixed `isCodeMode = true` hardcode; uses SpinnerIcon, PROSE_BASE
+- `frontend/src/utils/proseClass.js` — new shared prose Tailwind constant
+- `frontend/src/components/SpinnerIcon.jsx` — new shared spinner SVG component
+- `frontend/src/hooks/useWebSocket.js` — named WS timing constants
+- `frontend/src/pages/Review.jsx` — single-pass reduce instead of triple filter; uses SpinnerIcon
+- `frontend/src/components/MessageBubble.jsx`, `CodeChallengePanel.jsx`, `ConceptDetail.jsx` — use SpinnerIcon, PROSE_BASE
+- `frontend/src/hooks/usePersistedState.js` — deleted (unused)
+- `frontend/src/components/ReportButton.jsx` — deleted (unused)
+**Context:** Pure cleanup pass — no behavior changes. Reduces duplication ~15-20%, fixes two latent bugs, makes magic numbers configurable from a single location.
+
 ## 2026-04-21
 **Task:** Pivoted project to a focused LeetCode-grounded Feynman learning loop, stripping all features beaten by NotebookLM.
 

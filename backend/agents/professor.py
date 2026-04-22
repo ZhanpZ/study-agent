@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from backend.config import MODEL_PROFESSOR
+from backend.utils import format_history, skill_level_label
 
 
 def create_professor_agent() -> Agent:
@@ -26,7 +27,7 @@ def create_professor_agent() -> Agent:
 def explain_concept(
     agent: Agent, topic: str, skill_level: float, context: str = ""
 ) -> str:
-    skill_desc = "beginner" if skill_level < 30 else "intermediate" if skill_level < 70 else "advanced"
+    skill_desc = skill_level_label(skill_level)
 
     style_rule = (
         "STYLE: Be precise and concise. No filler phrases like 'Let me explain', "
@@ -62,12 +63,10 @@ def explain_concept(
 
 def answer_followup(
     agent: Agent, topic: str, question: str,
-    conversation_history: list[dict], skill_level: float, mode: str = "leetcode"
+    conversation_history: list[dict], skill_level: float,
 ) -> str:
-    history_text = "\n".join(
-        f"[{m.get('agent', 'unknown')}]: {m['content']}" for m in conversation_history
-    )
-    skill_desc = "beginner" if skill_level < 30 else "intermediate" if skill_level < 70 else "advanced"
+    history_text = format_history(conversation_history)
+    skill_desc = skill_level_label(skill_level)
 
     task = Task(
         description=(
@@ -85,11 +84,9 @@ def answer_followup(
 
 
 def generate_summary(
-    agent: Agent, topic: str, conversation_history: list[dict], mode: str = "leetcode"
+    agent: Agent, topic: str, conversation_history: list[dict],
 ) -> str:
-    history_text = "\n".join(
-        f"[{m.get('agent', 'unknown')}]: {m['content']}" for m in conversation_history
-    )
+    history_text = format_history(conversation_history, limit=None)
 
     task = Task(
         description=(

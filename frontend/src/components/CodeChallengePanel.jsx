@@ -1,6 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CodeBlock from "./CodeBlock";
+import SpinnerIcon from "./SpinnerIcon";
+import { PROSE_BASE } from "../utils/proseClass";
 
 export default function CodeChallengePanel({
   challenge, codeInput, setCodeInput, onSubmit, onKeyDown,
@@ -49,12 +51,7 @@ export default function CodeChallengePanel({
           )}
         </div>
 
-        <div className="text-sm text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none
-                        prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
-                        prose-p:my-1.5 prose-li:my-0 prose-ul:my-1.5
-                        prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-                        prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
-                        prose-strong:text-gray-100 max-h-80 overflow-y-auto">
+        <div className={`leading-relaxed max-h-80 overflow-y-auto ${PROSE_BASE}`}>
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
             {challenge.problem}
           </ReactMarkdown>
@@ -156,12 +153,7 @@ export default function CodeChallengePanel({
                      btn-interactive btn-ripple"
         >
           {submitting ? (
-            <>
-              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12a9 9 0 11-6.219-8.56"/>
-              </svg>
-              Evaluating...
-            </>
+            <><SpinnerIcon className="h-3.5 w-3.5" /> Evaluating...</>
           ) : (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

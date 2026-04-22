@@ -1,6 +1,12 @@
 import { useRef, useReducer, useCallback, useEffect, useMemo } from "react";
 import { loadSessionState, persistSessionState } from "../utils/sessionStorage";
 
+const WS_MAX_RECONNECT_ATTEMPTS = 5;
+const WS_HEARTBEAT_INTERVAL_MS = 30_000;
+const WS_RECONNECT_BASE_MS = 1_000;
+const WS_RECONNECT_MAX_MS = 10_000;
+const WS_PHASE_TRANSITION_DURATION_MS = 3_000;
+
 const PHASE_LABELS = {
   explain: "Learn",
   explain_done: "Ready to Teach",
@@ -135,7 +141,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef(null);
   const heartbeatTimer = useRef(null);
-  const maxReconnectAttempts = 5;
+  const maxReconnectAttempts = WS_MAX_RECONNECT_ATTEMPTS;
 
   // Reset ws state when sessionId changes (new session)
   useEffect(() => {
@@ -158,7 +164,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   function showPhaseTransition(newPhase) {
     const label = PHASE_LABELS[newPhase] || newPhase;
     dispatch({ type: "PHASE_TRANSITION", label });
-    setTimeout(() => dispatch({ type: "PHASE_TRANSITION", label: null }), 3000);
+    setTimeout(() => dispatch({ type: "PHASE_TRANSITION", label: null }), WS_PHASE_TRANSITION_DURATION_MS);
   }
 
   const connect = useCallback(() => {
@@ -179,7 +185,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "ping" }));
         }
-      }, 30000);
+      }, WS_HEARTBEAT_INTERVAL_MS);
     };
 
     ws.onmessage = (event) => {
@@ -229,7 +235,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
       }
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 10000);
+        const delay = Math.min(WS_RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts.current - 1), WS_RECONNECT_MAX_MS);
         dispatch({ type: "WS_CLOSE", status: "reconnecting" });
         reconnectTimer.current = setTimeout(() => {
           connect();

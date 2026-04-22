@@ -28,3 +28,16 @@ SM2_DEFAULT_EASINESS = 2.5          # SM-2 initial easiness factor
 MASTERY_SCORE_THRESHOLD = 80        # score needed to mark concept as mastered
 QUIZ_HISTORY_DEFAULT_LIMIT = 50     # default page size for quiz history
 QUIZ_HISTORY_MAX_LIMIT = 500        # max page size for quiz history
+
+# ─── Skill Tracker ───────────────────────────────────────────────
+SKILL_SCORE_ALPHA = 0.3             # weight of previous score in moving average
+SKILL_SCORE_BETA = 0.7              # weight of new score in moving average
+SKILL_CONFIDENCE_INCREMENT = 10     # confidence gain per evaluation
+SKILL_MAX_MISCONCEPTIONS = 10       # max unique gaps tracked per concept
+
+# ─── Agent Context ────────────────────────────────────────────────
+HISTORY_CONTEXT_WINDOW = 10         # conversation messages sent to agent prompts
+
+# ─── Tester / MCQ Cache ──────────────────────────────────────────
+MCQ_CACHE_TTL = 86400               # seconds (24h)
+MCQ_CACHE_MAX_SIZE = 128

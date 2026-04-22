@@ -232,6 +232,25 @@ async def delete_concept(concept_id: int, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted", "id": concept_id}
 
 
+# ─── WebSocket Helpers ────────────────────────────────────────────
+
+
+async def _save_message(
+    db: AsyncSession, session_id: int, role: str, agent: str, content: str, commit: bool = True
+) -> None:
+    db.add(Message(session_id=session_id, role=role, agent=agent, content=content))
+    if commit:
+        await db.commit()
+
+
+async def _maybe_send_comprehension_mcqs(
+    websocket: WebSocket, tester, topic: str, explanation: str
+) -> None:
+    mcqs = generate_comprehension_mcqs(tester, topic, explanation)
+    if mcqs:
+        await websocket.send_json({"type": "comprehension_mcqs", "questions": mcqs})
+
+
 # ─── WebSocket Endpoint ───────────────────────────────────────────
 
 
@@ -274,6 +293,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
     orchestrator, state = active_sessions[session_id]
 
+    def _cache(new_state):
+        active_sessions[session_id] = (orchestrator, new_state)
+        return new_state
+
     # Get a DB session for persistence
     async for db in get_db():
         try:
@@ -284,37 +307,19 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     "phase": "explain",
                 })
                 response, agent_name, state = orchestrator.process_message(state)
-                active_sessions[session_id] = (orchestrator, state)
+                state = _cache(state)
 
-                # Save message to DB
-                db.add(Message(
-                    session_id=session_id, role="assistant",
-                    agent=agent_name, content=response,
-                ))
-                await db.commit()
-
+                await _save_message(db, session_id, "assistant", agent_name, response)
                 await websocket.send_json({
                     "type": "message",
                     "agent": agent_name,
                     "content": response,
                     "phase": "explain_done",
                 })
-
-                # Send explain_done — wait for user to click "Ready to Teach"
-                await websocket.send_json({
-                    "type": "phase_change",
-                    "phase": "explain_done",
-                })
-
-                # Generate comprehension MCQs based on the explanation
-                comprehension_mcqs = generate_comprehension_mcqs(
-                    orchestrator.tester, state.topic, response,
+                await websocket.send_json({"type": "phase_change", "phase": "explain_done"})
+                await _maybe_send_comprehension_mcqs(
+                    websocket, orchestrator.tester, state.topic, response
                 )
-                if comprehension_mcqs:
-                    await websocket.send_json({
-                        "type": "comprehension_mcqs",
-                        "questions": comprehension_mcqs,
-                    })
 
             # Main message loop
             while True:
@@ -329,20 +334,14 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 if msg.get("type") == "ready_to_teach":
                     # User clicked "Ready to Teach"
                     if state.phase == Phase.EXPLAIN_DONE:
-                        state = orchestrator.transition_to_teach(state)
-                        active_sessions[session_id] = (orchestrator, state)
+                        state.phase = Phase.TEACH
+                        state = _cache(state)
 
-                        await websocket.send_json({
-                            "type": "phase_change", "phase": "teach",
-                        })
+                        await websocket.send_json({"type": "phase_change", "phase": "teach"})
                         prompt, agent_name, state = orchestrator.process_message(state)
-                        active_sessions[session_id] = (orchestrator, state)
+                        state = _cache(state)
 
-                        db.add(Message(
-                            session_id=session_id, role="assistant",
-                            agent=agent_name, content=prompt,
-                        ))
-                        # Persist phase to DB
+                        await _save_message(db, session_id, "assistant", agent_name, prompt, commit=False)
                         session_record = await db.get(Session, session_id)
                         if session_record:
                             session_record.phase = state.phase.value
@@ -355,25 +354,15 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                             "phase": state.phase.value,
                         })
                     else:
-                        # Phase already transitioned — re-send current phase
-                        await websocket.send_json({
-                            "type": "phase_change",
-                            "phase": state.phase.value,
-                        })
+                        await websocket.send_json({"type": "phase_change", "phase": state.phase.value})
 
                 elif msg.get("type") == "code_answer":
                     # User submitted code
                     code = msg.get("code", "")
-                    response, agent_name, state = orchestrator.process_code_answer(
-                        state, code
-                    )
-                    active_sessions[session_id] = (orchestrator, state)
+                    response, agent_name, state = orchestrator.process_code_answer(state, code)
+                    state = _cache(state)
 
-                    db.add(Message(
-                        session_id=session_id, role="assistant",
-                        agent=agent_name, content=response,
-                    ))
-                    await db.commit()
+                    await _save_message(db, session_id, "assistant", agent_name, response)
 
                     await websocket.send_json({
                         "type": "message",
@@ -389,17 +378,9 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 elif msg.get("type") == "message":
                     user_content = msg["content"]
 
-                    # Save user message
-                    db.add(Message(
-                        session_id=session_id, role="user",
-                        agent="user", content=user_content,
-                    ))
-
-                    # Process through orchestrator
-                    response, agent_name, state = orchestrator.process_message(
-                        state, user_content
-                    )
-                    active_sessions[session_id] = (orchestrator, state)
+                    await _save_message(db, session_id, "user", "user", user_content, commit=False)
+                    response, agent_name, state = orchestrator.process_message(state, user_content)
+                    state = _cache(state)
 
                     if response == "__CODE_CHALLENGE__":
                         await db.commit()  # persist user message
@@ -413,18 +394,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                             if key in state.code_challenge:
                                 challenge_msg[key] = state.code_challenge[key]
                         await websocket.send_json(challenge_msg)
-                        await websocket.send_json({
-                            "type": "phase_change", "phase": "evaluate",
-                        })
+                        await websocket.send_json({"type": "phase_change", "phase": "evaluate"})
                         continue
 
-                    # Save agent response
-                    db.add(Message(
-                        session_id=session_id, role="assistant",
-                        agent=agent_name, content=response,
-                    ))
-                    await db.commit()
-
+                    await _save_message(db, session_id, "assistant", agent_name, response)
                     await websocket.send_json({
                         "type": "message",
                         "agent": agent_name,
@@ -432,16 +405,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         "phase": state.phase.value,
                     })
 
-                    # Generate comprehension MCQs for professor follow-up answers
                     if state.phase == Phase.EXPLAIN_DONE and agent_name == "professor":
-                        followup_mcqs = generate_comprehension_mcqs(
-                            orchestrator.tester, state.topic, response,
+                        await _maybe_send_comprehension_mcqs(
+                            websocket, orchestrator.tester, state.topic, response
                         )
-                        if followup_mcqs:
-                            await websocket.send_json({
-                                "type": "comprehension_mcqs",
-                                "questions": followup_mcqs,
-                            })
 
                     # Send phase change if tester responded
                     if agent_name == "tester":
@@ -473,7 +440,6 @@ async def _update_summary(
         orchestrator.professor,
         state.topic,
         state.conversation_history,
-        mode="leetcode",
     )
     session_record = await db.get(Session, session_id)
     if session_record:

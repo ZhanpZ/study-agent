@@ -3,6 +3,10 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models.tables import SkillScore, Concept, Session
+from backend.config import (
+    SKILL_SCORE_ALPHA, SKILL_SCORE_BETA,
+    SKILL_CONFIDENCE_INCREMENT, SKILL_MAX_MISCONCEPTIONS,
+)
 
 
 async def get_or_create_skill(db: AsyncSession, concept_id: int) -> SkillScore:
@@ -38,14 +42,14 @@ async def update_skill(
     if skill.score == 0:
         skill.score = new_score
     else:
-        skill.score = skill.score * 0.3 + new_score * 0.7
+        skill.score = skill.score * SKILL_SCORE_ALPHA + new_score * SKILL_SCORE_BETA
 
     # Confidence increases with each evaluation
-    skill.confidence = min(100.0, skill.confidence + 10)
+    skill.confidence = min(100.0, skill.confidence + SKILL_CONFIDENCE_INCREMENT)
 
     # Track misconceptions (keep unique, most recent)
     existing = skill.misconceptions or []
-    all_gaps = list(dict.fromkeys(gaps + existing))[:10]  # keep last 10 unique gaps
+    all_gaps = list(dict.fromkeys(gaps + existing))[:SKILL_MAX_MISCONCEPTIONS]
     skill.misconceptions = all_gaps
 
     if auto_commit:
