@@ -228,6 +228,7 @@ def evaluate_code(
     user_code: str,
     conversation_history: list[dict],
     mode: str = "leetcode",
+    language: str = "python",
 ) -> TesterEvaluation:
     if mode == "industrial":
         criteria = (
@@ -248,9 +249,9 @@ def evaluate_code(
 
     task = Task(
         description=(
-            f"Evaluate code solution for '{topic}':\n\n"
+            f"Evaluate {language} code solution for '{topic}':\n\n"
             f"Problem: {challenge.get('problem', topic)}\n\n"
-            f"Code:\n```\n{user_code}\n```\n\n"
+            f"Code ({language}):\n```{language}\n{user_code}\n```\n\n"
             f"Criteria:\n{criteria}\n"
             "Respond with ONLY valid JSON:\n"
             '{"score": <0-100>, "gaps": ["gap1", "gap2"], "mastered": <true/false>, "feedback": "..."}\n\n'
@@ -279,6 +280,39 @@ def _get_comprehension_agent() -> Agent:
             allow_delegation=False,
         )
     return _comprehension_agent
+
+
+def detect_critical_errors(
+    topic: str,
+    user_explanation: str,
+) -> list[str]:
+    """Quickly detect factual errors in a teach-back explanation using a lightweight LLM call."""
+    from openai import OpenAI
+    client = OpenAI()
+    prompt = (
+        f"A student is teaching back '{topic}'. Check their explanation for critical factual errors only.\n\n"
+        f"Explanation: \"{user_explanation}\"\n\n"
+        "Return ONLY a JSON array of critical errors found. Empty array [] if none.\n"
+        "Only flag clear factual mistakes (wrong complexity, wrong definition, inverted logic). "
+        "Do NOT flag vagueness, simplification, or missing details.\n"
+        "Example: [\"Binary search requires O(n) space — actually O(1) iteratively\", "
+        "\"BFS uses a stack — actually a queue\"]\n"
+        "Respond with ONLY valid JSON array."
+    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=300,
+        )
+        raw = response.choices[0].message.content or "[]"
+        data = extract_json(raw)
+        if isinstance(data, list):
+            return [str(e) for e in data if e]
+    except Exception as e:
+        logger.warning("detect_critical_errors failed: %s", e)
+    return []
 
 
 def generate_comprehension_mcqs(

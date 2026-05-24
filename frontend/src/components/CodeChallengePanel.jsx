@@ -1,12 +1,18 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CodeBlock from "./CodeBlock";
+import CodeEditor, { LanguageSelector, LANGUAGES } from "./CodeEditor";
 
 export default function CodeChallengePanel({
-  challenge, codeInput, setCodeInput, onSubmit, onKeyDown,
-  lineCount, showHints, setShowHints, submitting, textareaRef,
+  challenge, codeInput, setCodeInput, onSubmit,
+  showHints, setShowHints, submitting,
 }) {
-  const lines = codeInput.split("\n");
+  const [language, setLanguage] = useState("python");
+  const lineCount = codeInput.split("\n").length;
+
+  const fileExtensions = { python: "py", javascript: "js", java: "java", cpp: "cpp" };
+  const filename = `solution.${fileExtensions[language] || "py"}`;
 
   return (
     <div className="my-4 rounded-xl overflow-hidden border border-focus-border bg-focus-surface">
@@ -98,43 +104,24 @@ export default function CodeChallengePanel({
               <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></span>
               <span className="w-2.5 h-2.5 rounded-full bg-green-500/60"></span>
             </div>
-            <span className="text-[11px] text-gray-400 font-mono">solution.py</span>
+            <span className="text-[11px] text-gray-400 font-mono">{filename}</span>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-gray-400">
-            <span>{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
-            <span className="text-gray-700">|</span>
-            <span className="text-gray-600">Tab = 4 spaces</span>
+          <div className="flex items-center gap-3">
+            <LanguageSelector language={language} onChange={setLanguage} />
+            <span className="text-[11px] text-gray-600">|</span>
+            <span className="text-[11px] text-gray-400">{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
           </div>
         </div>
 
-        {/* Line numbers + textarea */}
-        <div className="flex">
-          <div className="select-none py-3 pl-3 pr-2 bg-gray-900/60 text-right border-r border-gray-800/50 min-w-[3rem]">
-            {lines.map((_, i) => (
-              <div key={i} className="text-[11px] leading-[1.65rem] text-gray-600 font-mono">
-                {i + 1}
-              </div>
-            ))}
-            {codeInput.endsWith("\n") && (
-              <div className="text-[11px] leading-[1.65rem] text-gray-600 font-mono">
-                {lines.length + 1}
-              </div>
-            )}
-          </div>
-
-          <textarea
-            ref={textareaRef}
+        <div className="bg-gray-900/40">
+          <CodeEditor
             value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={Math.max(12, lineCount + 2)}
+            onChange={setCodeInput}
+            language={language}
+            minHeight="220px"
+            maxHeight="480px"
+            disabled={submitting}
             placeholder="# Write your solution here..."
-            className="flex-1 bg-gray-900/40 px-3 py-3 text-sm text-emerald-300 font-mono
-                       placeholder-gray-600 focus:outline-none resize-none
-                       leading-[1.65rem] caret-emerald-400"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
           />
         </div>
       </div>
@@ -148,7 +135,7 @@ export default function CodeChallengePanel({
           <span className="ml-1.5">to submit</span>
         </span>
         <button
-          onClick={onSubmit}
+          onClick={() => onSubmit(language)}
           disabled={!codeInput.trim() || submitting}
           className="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg
                      hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed

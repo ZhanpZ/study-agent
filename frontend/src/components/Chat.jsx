@@ -4,6 +4,7 @@ import PhaseIndicator from "./PhaseIndicator";
 import MCQPanel from "./MCQPanel";
 import ComprehensionPanel from "./ComprehensionPanel";
 import CodeChallengePanel from "./CodeChallengePanel";
+import CodeEditor from "./CodeEditor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -20,8 +21,10 @@ export default function Chat({
   const [codeInput, setCodeInput] = useState("");
   const [showHints, setShowHints] = useState(false);
   const [submittingCode, setSubmittingCode] = useState(false);
+  // Live session timer
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const codeTextareaRef = useRef(null);
   const inputRef = useRef(null);
 
   // Score animation state
@@ -89,6 +92,18 @@ export default function Chat({
     if (!thinking) setSubmittingCode(false);
   }, [thinking]);
 
+  // Start timer when connected, stop when complete
+  useEffect(() => {
+    if (phase === "complete" || !connected) {
+      clearInterval(timerRef.current);
+      return;
+    }
+    timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timerRef.current);
+  }, [phase, connected]);
+
+  const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
     if (!input.trim() || !canType) return;
@@ -96,31 +111,12 @@ export default function Chat({
     setInput("");
   }, [input, canType, onSend]);
 
-  const handleCodeSubmit = useCallback(() => {
+  const handleCodeSubmit = useCallback((language = "python") => {
     if (codeInput.trim()) {
       setSubmittingCode(true);
-      onSubmitCode(codeInput.trim());
+      onSubmitCode(codeInput.trim(), language);
     }
   }, [codeInput, onSubmitCode]);
-
-  const handleTabKey = useCallback((e) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const ta = e.target;
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      setCodeInput((prev) => prev.substring(0, start) + "    " + prev.substring(end));
-      requestAnimationFrame(() => {
-        ta.selectionStart = ta.selectionEnd = start + 4;
-      });
-    }
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      handleCodeSubmit();
-    }
-  }, [handleCodeSubmit]);
-
-  const lineCount = codeInput.split("\n").length;
 
   return (
     <div className="flex flex-col h-full">
@@ -149,8 +145,17 @@ export default function Chat({
         </div>
       )}
 
-      {/* Phase indicator */}
-      <PhaseIndicator currentPhase={phase} mode={mode} />
+      {/* Phase indicator + timer */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <PhaseIndicator currentPhase={phase} mode={mode} />
+        </div>
+        {phase !== "complete" && connected && elapsed > 0 && (
+          <span className="text-xs font-mono text-focus-text-muted tabular-nums shrink-0 px-2 py-1 bg-focus-surface border border-focus-border rounded-lg">
+            {formatTime(elapsed)}
+          </span>
+        )}
+      </div>
 
       {/* Score bar */}
       {score !== null && (
@@ -223,6 +228,7 @@ export default function Chat({
                 content={msg.content}
                 isLatest={idx === messages.length - 1}
                 isNew={!!msg.isNew}
+                streaming={!!msg.streaming}
               />
             ))}
 
@@ -259,12 +265,9 @@ export default function Chat({
                 codeInput={codeInput}
                 setCodeInput={setCodeInput}
                 onSubmit={handleCodeSubmit}
-                onKeyDown={handleTabKey}
-                lineCount={lineCount}
                 showHints={showHints}
                 setShowHints={setShowHints}
                 submitting={submittingCode}
-                textareaRef={codeTextareaRef}
               />
             )}
 
@@ -298,24 +301,16 @@ export default function Chat({
           )}
           <form onSubmit={handleSubmit} className="flex gap-2">
             {isCodeMode && isTeachPhase ? (
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onFocus={handleInputFocus}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e);
-                  }
-                }}
-                rows={3}
-                placeholder="Explain the code in your own words..."
-                className="flex-1 bg-focus-surface border border-focus-border rounded-xl px-4 py-3 text-sm
-                           text-white font-mono placeholder-gray-500 focus:outline-none
-                           focus:border-focus-teal focus:ring-1 focus:ring-focus-teal/30
-                           disabled:opacity-50 disabled:cursor-not-allowed resize-y transition-colors"
-              />
+              <div className="flex-1 rounded-xl overflow-hidden border border-focus-border focus-within:border-focus-teal transition-colors">
+                <CodeEditor
+                  value={input}
+                  onChange={setInput}
+                  language="python"
+                  minHeight="80px"
+                  maxHeight="200px"
+                  placeholder="# Explain the code in your own words..."
+                />
+              </div>
             ) : (
               <input
                 ref={inputRef}

@@ -29,6 +29,8 @@ def ask_questions(
     conversation_history: list[dict],
     skill_level: float,
     mode: str = "concept",
+    critical_errors: list[str] | None = None,
+    pending_gaps: list[str] | None = None,
 ) -> str:
     difficulty = "basic" if skill_level < 30 else "probing" if skill_level < 70 else "challenging"
 
@@ -38,6 +40,23 @@ def ask_questions(
         for msg in conversation_history[-10:]:
             role = msg.get("agent", msg.get("role", "unknown"))
             history_text += f"[{role}]: {msg['content']}\n"
+
+    # Inject detected factual errors as Socratic redirects
+    error_text = ""
+    if critical_errors:
+        error_lines = "\n".join(f"- {e}" for e in critical_errors)
+        error_text = (
+            f"\nIMPORTANT: The explanation contains factual errors. Do NOT correct them directly. "
+            f"Instead, ask Socratic questions that guide the user to discover the mistake:\n{error_lines}\n"
+        )
+
+    # Inject gaps from the last evaluation to target them specifically
+    gap_text = ""
+    if pending_gaps:
+        gap_lines = "\n".join(f"- {g}" for g in pending_gaps)
+        gap_text = (
+            f"\nPRIORITY GAPS from last evaluation — ask questions that specifically probe these:\n{gap_lines}\n"
+        )
 
     if mode == "industrial":
         focus = (
@@ -62,7 +81,9 @@ def ask_questions(
         description=(
             f"User is teaching you about '{topic}'. "
             f"Their explanation: \"{user_explanation}\"\n\n"
-            f"{history_text}\n"
+            f"{history_text}"
+            f"{error_text}"
+            f"{gap_text}\n"
             f"Difficulty: {difficulty}. {focus}\n\n"
             "STYLE: Ask concise, pointed questions. No preamble or pleasantries."
         ),

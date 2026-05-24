@@ -48,7 +48,49 @@ function AlgorithmTab() {
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = usePersistedState("algoQuiz_answers", {});
   const [revealed, setRevealed] = usePersistedState("algoQuiz_revealed", {});
+  const [weaknesses, setWeaknesses] = usePersistedState("algoQuiz_weaknesses", null);
+  const [masteryData, setMasteryData] = usePersistedState("algoQuiz_mastery", null);
   const { addToast } = useToast();
+
+  // Fetch weakness profile once on mount
+  useEffect(() => {
+    fetchWithTimeout("/api/quiz-history/weaknesses", {}, 5000)
+      .then((r) => r.json())
+      .then((d) => setWeaknesses(d.weaknesses || []))
+      .catch(() => {});
+  }, []);
+
+  // Fetch full history to build mastery bars
+  useEffect(() => {
+    fetchWithTimeout("/api/quiz-history?quiz_type=algorithm&limit=100", {}, 10000)
+      .then((r) => r.json())
+      .then((entries) => {
+        const algoCounts = {}; // { algoName: { correct: n, total: n } }
+        for (const entry of entries) {
+          const qs = entry.questions || [];
+          const ans = entry.answers || {};
+          for (let i = 0; i < qs.length; i++) {
+            const q = qs[i];
+            const userAns = ans[String(i)] ?? ans[i] ?? "";
+            const correct = q.correct || "";
+            const options = q.options || [];
+            const correctOpt = options.find((o) => o && o[0].toUpperCase() === correct.toUpperCase());
+            if (!correctOpt) continue;
+            const algo = correctOpt.slice(3).split(" — ")[0].trim();
+            if (!algoCounts[algo]) algoCounts[algo] = { correct: 0, total: 0 };
+            algoCounts[algo].total++;
+            if (String(userAns).toUpperCase().trim() === correct.toUpperCase().trim()) {
+              algoCounts[algo].correct++;
+            }
+          }
+        }
+        const sorted = Object.entries(algoCounts)
+          .map(([algo, { correct, total }]) => ({ algo, correct, total, pct: Math.round((correct / total) * 100) }))
+          .sort((a, b) => a.pct - b.pct);
+        setMasteryData(sorted);
+      })
+      .catch(() => {});
+  }, []);
 
   const generateQuiz = async () => {
     setLoading(true);
@@ -56,7 +98,10 @@ function AlgorithmTab() {
     setAnswers({});
     setRevealed({});
     try {
-      const res = await fetchWithTimeout("/api/algorithm-quiz?count=5", {}, 30000);
+      // Build focus param from top weaknesses
+      const top = (weaknesses || []).slice(0, 3).map((w) => w.algorithm);
+      const focusParam = top.length > 0 ? `&focus=${encodeURIComponent(top.join(","))}` : "";
+      const res = await fetchWithTimeout(`/api/algorithm-quiz?count=5${focusParam}`, {}, 30000);
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (!data.questions || data.questions.length === 0) {
@@ -100,14 +145,51 @@ function AlgorithmTab() {
         Given a problem description, pick the best algorithm or approach.
       </p>
 
-      <button
-        onClick={generateQuiz}
-        disabled={loading}
-        className="px-6 py-3 bg-amber-600 text-white font-medium rounded-lg
-                   hover:bg-amber-500 disabled:opacity-50 transition-colors mb-8"
-      >
-        {loading ? "Generating..." : "Generate Quiz"}
-      </button>
+      <div className="flex items-center gap-4 mb-6 flex-wrap">
+        <button
+          onClick={generateQuiz}
+          disabled={loading}
+          className="px-6 py-3 bg-amber-600 text-white font-medium rounded-lg
+                     hover:bg-amber-500 disabled:opacity-50 transition-colors"
+        >
+          {loading ? "Generating..." : "Generate Quiz"}
+        </button>
+        {weaknesses && weaknesses.length > 0 && (
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <span>Targeting weak areas:</span>
+            {weaknesses.slice(0, 3).map((w) => (
+              <span key={w.algorithm} className="px-2 py-0.5 bg-red-900/30 text-red-300 border border-red-800/40 rounded-md">
+                {w.algorithm}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Per-algorithm mastery bars */}
+      {masteryData && masteryData.length > 0 && (
+        <div className="mb-8 rounded-xl border border-focus-border bg-focus-surface p-4">
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">Algorithm Mastery</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {masteryData.map(({ algo, correct, total, pct }) => (
+              <div key={algo}>
+                <div className="flex items-center justify-between text-xs mb-0.5">
+                  <span className="text-gray-400 truncate max-w-[150px]">{algo}</span>
+                  <span className={`font-medium tabular-nums ${pct >= 70 ? "text-green-400" : pct >= 40 ? "text-amber-400" : "text-red-400"}`}>
+                    {correct}/{total}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {questions && totalAnswered > 0 && (
         <div className="mb-6 p-3 bg-gray-800/60 rounded-lg border border-gray-700">

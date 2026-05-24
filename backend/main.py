@@ -12,7 +12,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.database import init_db, get_db
-from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory, QuizFeedback
+from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory, QuizFeedback, StudyGoal
 from backend.models.schemas import (
     SessionStart, SessionResponse, SkillResponse, ReviewDue, StatsResponse, WSMessage,
     ConceptMerge, QuizHistorySave, QuizFeedbackCreate, NoteCleanRequest,
@@ -25,12 +25,16 @@ from backend.agents.quiz_generator import (
     create_ml_math_agent, generate_ml_math_question,
 )
 from backend.agents.note_cleaner import create_note_cleaner_agent, clean_note
+from backend.services.streaming import (
+    stream_to_ws, build_explain_prompt, build_followup_prompt,
+    build_student_prompt, _professor_system_prompt, _student_system_prompt,
+)
 from backend.services.scheduler import update_review_schedule, get_due_reviews
 from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
 )
 from backend.services.concept_matcher import find_matching_concept
-from backend.config import QUIZ_HISTORY_DEFAULT_LIMIT, QUIZ_HISTORY_MAX_LIMIT
+from backend.config import QUIZ_HISTORY_DEFAULT_LIMIT, QUIZ_HISTORY_MAX_LIMIT, MIN_TEACH_BEFORE_EVAL, EVAL_EVERY_N_ROUNDS
 
 
 @asynccontextmanager
@@ -227,11 +231,115 @@ async def deduplicate(db: AsyncSession = Depends(get_db)):
     return {"status": "ok", "merged_count": merged}
 
 
+@app.get("/api/quiz-history/weaknesses")
+async def get_quiz_weaknesses(db: AsyncSession = Depends(get_db)):
+    """Return frequency map of most-missed algorithm patterns from recent quiz history."""
+    result = await db.execute(
+        select(QuizHistory)
+        .where(QuizHistory.quiz_type == "algorithm")
+        .order_by(QuizHistory.created_at.desc())
+        .limit(50)
+    )
+    entries = result.scalars().all()
+
+    miss_counts: dict[str, int] = {}
+    for entry in entries:
+        questions = entry.questions or []
+        answers = entry.answers or {}
+        for i, q in enumerate(questions):
+            user_answer = answers.get(str(i), answers.get(i, ""))
+            correct = q.get("correct", "")
+            if str(user_answer).upper().strip() != str(correct).upper().strip():
+                # Find the correct option's algorithm name
+                options = q.get("options", [])
+                correct_option = next(
+                    (o for o in options if o and o[0].upper() == correct.upper()),
+                    None,
+                )
+                if correct_option:
+                    # Extract algorithm name (text before " — " or first word group)
+                    algo = correct_option[3:].split(" — ")[0].strip()
+                    miss_counts[algo] = miss_counts.get(algo, 0) + 1
+
+    sorted_weaknesses = sorted(miss_counts.items(), key=lambda x: x[1], reverse=True)
+    return {
+        "weaknesses": [
+            {"algorithm": algo, "miss_count": count}
+            for algo, count in sorted_weaknesses[:10]
+        ]
+    }
+
+
+@app.get("/api/goals/today")
+async def get_goals_today(db: AsyncSession = Depends(get_db)):
+    """Return today's study goal progress and current streak."""
+    today = datetime.date.today().isoformat()
+
+    # Get or compute today's actual study minutes from sessions
+    result = await db.execute(
+        select(Session).where(
+            Session.started_at >= datetime.datetime.combine(
+                datetime.date.today(), datetime.time.min
+            )
+        )
+    )
+    today_sessions = result.scalars().all()
+    actual_minutes = 0.0
+    for s in today_sessions:
+        end = s.ended_at or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        actual_minutes += (end - s.started_at).total_seconds() / 60
+
+    # Compute streak: walk backwards until a day has no study time
+    streak = 0
+    check_date = datetime.date.today()
+    for _ in range(365):
+        day_start = datetime.datetime.combine(check_date, datetime.time.min)
+        day_end = datetime.datetime.combine(check_date, datetime.time.max)
+        r = await db.execute(
+            select(Session).where(
+                Session.started_at >= day_start,
+                Session.started_at <= day_end,
+            ).limit(1)
+        )
+        if r.scalars().first():
+            streak += 1
+            check_date -= datetime.timedelta(days=1)
+        else:
+            break
+
+    # Upsert today's goal record
+    goal_result = await db.execute(select(StudyGoal).where(StudyGoal.date == today))
+    goal = goal_result.scalars().first()
+    if goal is None:
+        goal = StudyGoal(date=today, actual_minutes=actual_minutes, streak_days=streak)
+        db.add(goal)
+    else:
+        goal.actual_minutes = actual_minutes
+        goal.streak_days = streak
+    await db.commit()
+
+    return {
+        "date": today,
+        "target_minutes": goal.target_minutes,
+        "actual_minutes": round(actual_minutes, 1),
+        "streak_days": streak,
+    }
+
+
+@app.get("/api/recommendations")
+async def get_recommendations(limit: int = 5, db: AsyncSession = Depends(get_db)):
+    """Return ranked study recommendations based on SM-2 schedule, skill gaps, and prerequisite graph."""
+    from backend.services.recommender import get_recommendations as _get_recs
+    recs = await _get_recs(db, limit=min(limit, 10))
+    return {"recommendations": recs}
+
+
 @app.get("/api/algorithm-quiz")
-async def get_algorithm_quiz(count: int = 5):
-    """Generate algorithm selection quiz questions."""
+async def get_algorithm_quiz(count: int = 5, focus: str | None = None):
+    """Generate algorithm selection quiz questions, optionally biased toward weak algorithms."""
     agent = create_quiz_agent()
-    questions = generate_algorithm_quiz(agent, num_questions=min(count, 10))
+    bias = [a.strip() for a in focus.split(",")] if focus else None
+    questions = generate_algorithm_quiz(agent, num_questions=min(count, 10), bias_toward=bias)
     return {"questions": questions}
 
 
@@ -460,6 +568,17 @@ async def delete_quiz_feedback(entry_id: int, db: AsyncSession = Depends(get_db)
     return {"status": "deleted", "id": entry_id}
 
 
+async def _stamp_phase(db: AsyncSession, session_id: int, phase: str) -> None:
+    """Record a phase transition timestamp on the Session row."""
+    record = await db.get(Session, session_id)
+    if record:
+        stamps = dict(record.phase_timestamps or {})
+        stamps[phase] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        record.phase_timestamps = stamps
+        record.phase = phase
+        await db.commit()
+
+
 # ─── WebSocket Endpoint ───────────────────────────────────────────
 
 
@@ -507,28 +626,34 @@ async def websocket_session(websocket: WebSocket, session_id: int):
     # Get a DB session for persistence
     async for db in get_db():
         try:
-            # If session just started, kick off the Professor explanation
+            # If session just started, kick off the Professor explanation (streamed)
             if state.phase == Phase.EXPLAIN:
                 await websocket.send_json({
                     "type": "phase_change",
                     "phase": "explain",
                 })
-                response, agent_name, state = orchestrator.process_message(state)
+
+                user_prompt = build_explain_prompt(state.topic, state.skill_level, mode=state.mode)
+                response = await stream_to_ws(
+                    websocket,
+                    _professor_system_prompt(),
+                    user_prompt,
+                    agent_name="professor",
+                )
+
+                # Update state manually (bypass CrewAI)
+                state.conversation_history.append({
+                    "role": "assistant", "agent": "professor", "content": response,
+                })
+                state.phase = Phase.EXPLAIN_DONE
                 active_sessions[session_id] = (orchestrator, state)
 
                 # Save message to DB
                 db.add(Message(
                     session_id=session_id, role="assistant",
-                    agent=agent_name, content=response,
+                    agent="professor", content=response,
                 ))
                 await db.commit()
-
-                await websocket.send_json({
-                    "type": "message",
-                    "agent": agent_name,
-                    "content": response,
-                    "phase": "explain_done",
-                })
 
                 # Send explain_done — wait for user to click "Ready to Teach"
                 await websocket.send_json({
@@ -581,11 +706,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                                 await websocket.send_json({
                                     "type": "phase_change", "phase": "evaluate",
                                 })
-                            # Persist phase to DB
-                            session_record = await db.get(Session, session_id)
-                            if session_record:
-                                session_record.phase = state.phase.value
-                                await db.commit()
+                            await _stamp_phase(db, session_id, state.phase.value)
                             continue
 
                         state = orchestrator.transition_to_teach(state)
@@ -601,11 +722,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                             session_id=session_id, role="assistant",
                             agent=agent_name, content=prompt,
                         ))
-                        # Persist phase to DB
-                        session_record = await db.get(Session, session_id)
-                        if session_record:
-                            session_record.phase = state.phase.value
-                        await db.commit()
+                        await _stamp_phase(db, session_id, "teach")
 
                         await websocket.send_json({
                             "type": "message",
@@ -649,8 +766,9 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 elif msg.get("type") == "code_answer":
                     # User submitted code
                     code = msg.get("code", "")
+                    language = msg.get("language", "python")
                     response, agent_name, state = orchestrator.process_code_answer(
-                        state, code
+                        state, code, language=language
                     )
                     active_sessions[session_id] = (orchestrator, state)
 
@@ -674,33 +792,122 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 elif msg.get("type") == "message":
                     user_content = msg["content"]
 
-                    # Save user message (batched with response below)
+                    # Save user message first
                     db.add(Message(
                         session_id=session_id, role="user",
                         agent="user", content=user_content,
                     ))
+                    await db.commit()
 
-                    # Process through orchestrator
+                    if state.phase == Phase.EXPLAIN_DONE:
+                        # Professor answers follow-up question (streamed)
+                        state.conversation_history.append({
+                            "role": "user", "agent": "user", "content": user_content,
+                        })
+                        followup_prompt = build_followup_prompt(
+                            state.topic, user_content,
+                            state.conversation_history, state.skill_level, mode=state.mode,
+                        )
+                        response = await stream_to_ws(
+                            websocket, _professor_system_prompt(), followup_prompt,
+                            agent_name="professor",
+                        )
+                        state.conversation_history.append({
+                            "role": "assistant", "agent": "professor", "content": response,
+                        })
+                        active_sessions[session_id] = (orchestrator, state)
+                        db.add(Message(
+                            session_id=session_id, role="assistant",
+                            agent="professor", content=response,
+                        ))
+                        await db.commit()
+                        await websocket.send_json({
+                            "type": "phase_change", "phase": "explain_done",
+                        })
+                        followup_mcqs = generate_comprehension_mcqs(
+                            orchestrator.tester, state.topic, response,
+                        )
+                        if followup_mcqs:
+                            await websocket.send_json({
+                                "type": "comprehension_mcqs", "questions": followup_mcqs,
+                            })
+                        continue
+
+                    if state.phase == Phase.TEACH:
+                        # Save user message to state history
+                        state.conversation_history.append({
+                            "role": "user", "agent": "user", "content": user_content,
+                        })
+                        state.teach_rounds += 1
+
+                        # Check if it's time for evaluation
+                        if (state.teach_rounds >= MIN_TEACH_BEFORE_EVAL
+                                and (state.teach_rounds - MIN_TEACH_BEFORE_EVAL) % EVAL_EVERY_N_ROUNDS == 0):
+                            state.phase = Phase.EVALUATE
+                            response, agent_name, state = orchestrator._handle_evaluate(state)
+                            active_sessions[session_id] = (orchestrator, state)
+
+                            if response == "__MCQ__":
+                                await websocket.send_json({
+                                    "type": "mcq", "questions": state.mcq_questions, "phase": "quiz",
+                                })
+                                await websocket.send_json({"type": "phase_change", "phase": "quiz"})
+                            elif response == "__CODE_CHALLENGE__":
+                                challenge_msg = {
+                                    "type": "code_challenge",
+                                    "problem": state.code_challenge.get("problem", ""),
+                                    "hints": state.code_challenge.get("hints", []),
+                                    "phase": "evaluate",
+                                }
+                                for key in ("url", "title", "difficulty", "leetcode_id"):
+                                    if key in state.code_challenge:
+                                        challenge_msg[key] = state.code_challenge[key]
+                                await websocket.send_json(challenge_msg)
+                                await websocket.send_json({"type": "phase_change", "phase": "evaluate"})
+                            continue
+
+                        # Detect errors and build student prompt (streamed)
+                        from backend.agents.tester import detect_critical_errors as _det
+                        critical_errors = _det(state.topic, user_content)
+                        student_prompt = build_student_prompt(
+                            state.topic, user_content, state.conversation_history,
+                            state.skill_level, mode=state.mode,
+                            critical_errors=critical_errors,
+                            pending_gaps=state.pending_gaps,
+                        )
+                        state.pending_gaps = []
+                        response = await stream_to_ws(
+                            websocket, _student_system_prompt(), student_prompt,
+                            agent_name="student",
+                        )
+                        state.conversation_history.append({
+                            "role": "assistant", "agent": "student", "content": response,
+                        })
+                        active_sessions[session_id] = (orchestrator, state)
+                        db.add(Message(
+                            session_id=session_id, role="assistant",
+                            agent="student", content=response,
+                        ))
+                        await db.commit()
+                        await websocket.send_json({
+                            "type": "phase_change", "phase": "teach",
+                        })
+                        continue
+
+                    # Fallback: process through orchestrator for other phases
                     response, agent_name, state = orchestrator.process_message(
                         state, user_content
                     )
                     active_sessions[session_id] = (orchestrator, state)
 
-                    # Check for special response types (MCQ, code challenge)
                     if response == "__MCQ__":
-                        await db.commit()  # persist user message
                         await websocket.send_json({
-                            "type": "mcq",
-                            "questions": state.mcq_questions,
-                            "phase": "quiz",
+                            "type": "mcq", "questions": state.mcq_questions, "phase": "quiz",
                         })
-                        await websocket.send_json({
-                            "type": "phase_change", "phase": "quiz",
-                        })
+                        await websocket.send_json({"type": "phase_change", "phase": "quiz"})
                         continue
 
                     if response == "__CODE_CHALLENGE__":
-                        await db.commit()  # persist user message
                         challenge_msg = {
                             "type": "code_challenge",
                             "problem": state.code_challenge.get("problem", ""),
@@ -711,12 +918,9 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                             if key in state.code_challenge:
                                 challenge_msg[key] = state.code_challenge[key]
                         await websocket.send_json(challenge_msg)
-                        await websocket.send_json({
-                            "type": "phase_change", "phase": "evaluate",
-                        })
+                        await websocket.send_json({"type": "phase_change", "phase": "evaluate"})
                         continue
 
-                    # Save agent response
                     db.add(Message(
                         session_id=session_id, role="assistant",
                         agent=agent_name, content=response,
@@ -724,24 +928,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     await db.commit()
 
                     await websocket.send_json({
-                        "type": "message",
-                        "agent": agent_name,
-                        "content": response,
-                        "phase": state.phase.value,
+                        "type": "message", "agent": agent_name,
+                        "content": response, "phase": state.phase.value,
                     })
 
-                    # Generate comprehension MCQs for professor follow-up answers
-                    if state.phase == Phase.EXPLAIN_DONE and agent_name == "professor":
-                        followup_mcqs = generate_comprehension_mcqs(
-                            orchestrator.tester, state.topic, response,
-                        )
-                        if followup_mcqs:
-                            await websocket.send_json({
-                                "type": "comprehension_mcqs",
-                                "questions": followup_mcqs,
-                            })
-
-                    # Send phase change if needed
                     if agent_name == "tester":
                         await _handle_post_evaluation(
                             websocket, db, session_id, orchestrator, state
@@ -824,9 +1014,8 @@ async def _handle_post_evaluation(
         })
 
         if session_record and session_record.concept_id:
-            session_record.phase = "complete"
-            session_record.ended_at = datetime.datetime.utcnow()
-            await db.commit()
+            session_record.ended_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            await _stamp_phase(db, session_id, "complete")
 
             # Final summary update
             await _update_summary(db, websocket, session_id, orchestrator, state)

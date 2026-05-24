@@ -507,12 +507,24 @@ def _validate_constraint_answers(questions: list[dict]) -> list[dict]:
 def generate_algorithm_quiz(
     agent: Agent,
     num_questions: int = 5,
+    bias_toward: list[str] | None = None,
 ) -> list[dict]:
+    bias_instruction = ""
+    if bias_toward:
+        names = ", ".join(bias_toward)
+        bias_instruction = (
+            f"\nFOCUS REQUIREMENT: At least {min(2, num_questions)} of the {num_questions} questions "
+            f"MUST have the correct answer be one of these algorithms: {names}. "
+            "These are areas where the user has struggled — design problems that specifically test "
+            "these patterns.\n"
+        )
     task = Task(
         description=(
             f"Generate {num_questions} algorithm selection quiz questions from a random mix "
             "of topics (graphs, DP, arrays, trees, strings, sorting, greedy, etc.).\n\n"
-            + ALGORITHM_REFERENCE + "\n\n"
+            + bias_instruction
+            + ALGORITHM_REFERENCE
+            + "\n\n"
             "CRITICAL RULES FOR PROBLEM DESCRIPTIONS:\n"
             "- Write a realistic LeetCode-style problem statement\n"
             "- The problem description must NOT contain any algorithm names, technique names, "

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useToast } from "../components/Toast";
@@ -6,6 +6,7 @@ import usePersistedState from "../hooks/usePersistedState";
 import saveQuizHistory from "../utils/saveQuizHistory";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
 import CodeBlock from "../components/CodeBlock";
+import CodeEditor from "../components/CodeEditor";
 
 const DIFFICULTY_STYLES = {
   easy: "bg-green-500/15 text-green-400 border-green-500/25",
@@ -21,7 +22,6 @@ export default function DSATemplateDrill() {
   const [evaluation, setEvaluation] = usePersistedState("dsaDrill_eval", null);
   const [evaluating, setEvaluating] = useState(false);
   const [phase, setPhase] = usePersistedState("dsaDrill_phase", "select"); // select | code | result
-  const textareaRef = useRef(null);
   const { addToast } = useToast();
 
   // Fetch template catalog on mount
@@ -83,23 +83,6 @@ export default function DSATemplateDrill() {
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const start = e.target.selectionStart;
-      const end = e.target.selectionEnd;
-      const newCode = codeInput.substring(0, start) + "    " + codeInput.substring(end);
-      setCodeInput(newCode);
-      requestAnimationFrame(() => {
-        e.target.selectionStart = e.target.selectionEnd = start + 4;
-      });
-    }
-    if (e.key === "Enter" && e.ctrlKey) {
-      e.preventDefault();
-      handleSubmitCode();
-    }
-  };
-
   const handleTryAgain = () => {
     setCodeInput("");
     setEvaluation(null);
@@ -147,9 +130,7 @@ export default function DSATemplateDrill() {
           codeInput={codeInput}
           setCodeInput={setCodeInput}
           onSubmit={handleSubmitCode}
-          onKeyDown={handleKeyDown}
           evaluating={evaluating}
-          textareaRef={textareaRef}
         />
       )}
 
@@ -262,9 +243,8 @@ function TemplateCard({ template, onClick }) {
 
 /* ─── Code Phase ─────────────────────────────────────────────── */
 
-function CodePhase({ template, codeInput, setCodeInput, onSubmit, onKeyDown, evaluating, textareaRef }) {
-  const lines = codeInput.split("\n");
-  const lineCount = lines.length;
+function CodePhase({ template, codeInput, setCodeInput, onSubmit, evaluating }) {
+  const lineCount = codeInput.split("\n").length;
 
   return (
     <div>
@@ -324,42 +304,18 @@ function CodePhase({ template, codeInput, setCodeInput, onSubmit, onKeyDown, eva
             </div>
             <span className="text-[11px] text-gray-400 font-mono">solution.py</span>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-gray-400">
-            <span>{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
-            <span className="text-gray-700">|</span>
-            <span className="text-gray-600">Tab = 4 spaces</span>
-          </div>
+          <span className="text-[11px] text-gray-400">{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
         </div>
 
-        {/* Line numbers + textarea */}
-        <div className="flex">
-          <div className="select-none py-3 pl-3 pr-2 bg-gray-900/60 text-right border-r border-gray-800/50 min-w-[3rem]">
-            {lines.map((_, i) => (
-              <div key={i} className="text-[11px] leading-[1.65rem] text-gray-600 font-mono">
-                {i + 1}
-              </div>
-            ))}
-            {codeInput.endsWith("\n") && (
-              <div className="text-[11px] leading-[1.65rem] text-gray-600 font-mono">
-                {lineCount + 1}
-              </div>
-            )}
-          </div>
-
-          <textarea
-            ref={textareaRef}
+        <div className="bg-gray-900/40">
+          <CodeEditor
             value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={Math.max(15, lineCount + 2)}
-            placeholder="# Write your implementation here..."
-            className="flex-1 bg-gray-900/40 px-3 py-3 text-sm text-emerald-300 font-mono
-                       placeholder-gray-600 focus:outline-none resize-none
-                       leading-[1.65rem] caret-emerald-400"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
+            onChange={setCodeInput}
+            language="python"
+            minHeight="300px"
+            maxHeight="600px"
             disabled={evaluating}
+            placeholder="# Write your implementation here..."
           />
         </div>
 

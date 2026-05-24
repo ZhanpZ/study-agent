@@ -1,5 +1,39 @@
 # Development Diary
 
+## 2026-05-23 (hotfix)
+**Task:** Fixed 500 error on session start caused by missing `tags` and `prerequisites` columns in the `concepts` table.
+
+**Files Changed:**
+- `study.db` — Added `tags` (JSON) and `prerequisites` (JSON) columns via `ALTER TABLE`.
+
+**Context:** The ORM model was updated to include these columns but the existing database was never migrated. SQLite doesn't support `CREATE TABLE IF NOT EXISTS` schema evolution, so an explicit `ALTER TABLE` was needed.
+
+---
+
+## 2026-05-23
+**Task:** Implemented 6 creative improvement initiatives across the full stack — teach-back integrity gate, token streaming, real code editor, adaptive algorithm quiz, time tracking, and a recommendation engine.
+
+**Files Changed:**
+- `backend/agents/tester.py` — Added `detect_critical_errors()` for lightweight factual-error detection during teach-back; `evaluate_code()` now accepts a `language` param.
+- `backend/agents/student.py` — `ask_questions()` injects detected errors as Socratic redirects and targets `pending_gaps` from last evaluation.
+- `backend/agents/orchestrator.py` — `SessionState` gains `pending_gaps`; `_handle_teach()` calls error detector and passes errors+gaps; `_finalize_evaluation()` stores gaps for next round.
+- `backend/agents/quiz_generator.py` — `generate_algorithm_quiz()` accepts `bias_toward` to skew question generation toward weak patterns.
+- `backend/services/streaming.py` — **Created.** `stream_to_ws()` streams OpenAI tokens over WebSocket (`stream_start`/`stream_chunk`/`stream_end`), bypassing CrewAI's blocking `execute_task()`. Includes all prompt-builder helpers.
+- `backend/services/recommender.py` — **Created.** Recommendation engine ranking concepts by SM-2 due date, skill score, and a hardcoded prerequisite graph.
+- `backend/models/tables.py` — `Session` gains `phase_timestamps` JSON column; new `StudyGoal` table (date, target_minutes, actual_minutes, streak_days); `Concept` gains `tags` and `prerequisites` JSON columns.
+- `backend/main.py` — EXPLAIN/TEACH/EXPLAIN_DONE phases stream via `stream_to_ws()`; new `_stamp_phase()` helper records phase timestamps to DB; new `GET /api/goals/today` endpoint (daily minutes + streak); new `GET /api/recommendations` endpoint; `GET /api/algorithm-quiz` accepts `?focus=` bias param; `GET /api/quiz-history/weaknesses` added.
+- `frontend/src/components/CodeEditor.jsx` — **Created.** Shared CodeMirror 6 editor with vscodeDark theme and `LanguageSelector` for Python/JS/Java/C++.
+- `frontend/src/components/CodeChallengePanel.jsx` — Replaced textarea with `CodeEditor`; passes selected language on submit.
+- `frontend/src/components/MessageBubble.jsx` — Accepts `streaming` prop; disables word-by-word animation during real streaming; shows blinking teal cursor while streaming.
+- `frontend/src/components/Chat.jsx` — Passes `streaming` prop to `MessageBubble`; live session timer (`mm:ss`); teach-phase code input upgraded to `CodeEditor`.
+- `frontend/src/hooks/useWebSocket.js` — `STREAM_START`/`STREAM_CHUNK`/`STREAM_END` reducer actions; token-by-token message building; `sendCodeAnswer()` sends `language`.
+- `frontend/src/pages/AlgorithmQuiz.jsx` — Fetches `/api/quiz-history/weaknesses`; biases `generateQuiz()` with top 3 weak patterns; per-algorithm mastery bars.
+- `frontend/src/pages/Dashboard.jsx` — "Today" widget (minutes studied + goal progress bar + streak); "Study Next" card with ranked recommendations and one-click navigation.
+- `frontend/src/pages/Study.jsx` — Reads `?topic=` query param to pre-fill topic input (used by Dashboard "Study Next" card).
+- `frontend/src/pages/DSATemplateDrill.jsx` — Upgraded code textarea to `CodeEditor`.
+
+**Context:** Six improvements in one session. Streaming (Initiative 2) required bypassing CrewAI entirely for professor/student agents — the system prompt is reconstructed from role/goal/backstory in `streaming.py`. Tester agent is NOT streamed (JSON must be parsed atomically). The `phase_timestamps` column is nullable to avoid requiring a DB migration on existing databases — SQLAlchemy `create_all` adds new columns only on fresh DBs; existing DBs need an `ALTER TABLE` if they predate this change.
+
 ## 2026-03-01
 **Task:** Added micro-interactions across the frontend to improve attention span and engagement.
 

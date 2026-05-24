@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useSession } from "../context/SessionContext";
 import { useToast } from "../components/Toast";
 import useWebSocket from "../hooks/useWebSocket";
@@ -8,7 +9,8 @@ import { MODE_CONFIG } from "../constants/modeConfig";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
 
 export default function Study() {
-  const [topic, setTopic] = useState("");
+  const [searchParams] = useSearchParams();
+  const [topic, setTopic] = useState(searchParams.get("topic") || "");
   const [topicError, setTopicError] = useState("");
   const {
     sessionId, setSessionId,

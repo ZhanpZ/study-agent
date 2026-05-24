@@ -51,11 +51,12 @@ const AGENT_STYLES = {
 const WORDS_PER_TICK = 2;
 const TICK_MS = 30;
 
-export default function MessageBubble({ agent, content, isLatest, isNew }) {
+export default function MessageBubble({ agent, content, isLatest, isNew, streaming = false }) {
   const style = AGENT_STYLES[agent] || AGENT_STYLES.system;
   const isUser = agent === "user";
 
-  const shouldAnimate = isLatest && isNew && !isUser;
+  // Skip word-by-word animation when real token streaming is active
+  const shouldAnimate = isLatest && isNew && !isUser && !streaming;
   const words = useRef(content.split(/(\s+)/));
   const [wordIndex, setWordIndex] = useState(shouldAnimate ? 0 : words.current.length);
   const [isAnimating, setIsAnimating] = useState(shouldAnimate);
@@ -128,6 +129,9 @@ export default function MessageBubble({ agent, content, isLatest, isNew }) {
             >
               {displayedContent}
             </ReactMarkdown>
+            {streaming && (
+              <span className="inline-block w-0.5 h-4 bg-teal-400 ml-0.5 animate-pulse align-middle" />
+            )}
           </div>
         )}
       </div>

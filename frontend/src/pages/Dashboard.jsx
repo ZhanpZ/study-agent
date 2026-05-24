@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
 import { ACTIVITY_TYPE } from "../constants/modeConfig";
@@ -10,9 +10,12 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [quizHistory, setQuizHistory] = useState([]);
   const [reviewsDue, setReviewsDue] = useState([]);
+  const [todayGoal, setTodayGoal] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedConcept, setSelectedConcept] = useState(null);
   const { addToast } = useToast();
+  const navigate = useNavigate();
 
   const deleteQuizEntry = async (entryId) => {
     try {
@@ -48,12 +51,16 @@ export default function Dashboard() {
       fetchWithTimeout("/api/dashboard/stats").then((r) => r.json()),
       fetchWithTimeout("/api/quiz-history?limit=500").then((r) => r.json()),
       fetchWithTimeout("/api/reviews/due").then((r) => r.json()),
+      fetchWithTimeout("/api/goals/today").then((r) => r.json()),
+      fetchWithTimeout("/api/recommendations?limit=3").then((r) => r.json()),
     ])
-      .then(([skillsRes, statsRes, quizRes, reviewRes]) => {
+      .then(([skillsRes, statsRes, quizRes, reviewRes, goalRes, recsRes]) => {
         if (skillsRes.status === "fulfilled") setSkills(skillsRes.value);
         if (statsRes.status === "fulfilled") setStats(statsRes.value);
         if (quizRes.status === "fulfilled") setQuizHistory(quizRes.value);
         if (reviewRes.status === "fulfilled") setReviewsDue(reviewRes.value);
+        if (goalRes.status === "fulfilled") setTodayGoal(goalRes.value);
+        if (recsRes.status === "fulfilled") setRecommendations(recsRes.value.recommendations || []);
 
         const failures = [skillsRes, statsRes, quizRes, reviewRes].filter(
           (r) => r.status === "rejected"
@@ -294,6 +301,40 @@ export default function Dashboard() {
         </SectionCard>
 
 
+        {/* Study Next Section */}
+        <SectionCard
+          title="Study Next"
+          icon={"\u{1F9ED}"}
+          accentColor="violet-400"
+          linkTo="/"
+          linkLabel="Browse all"
+        >
+          {recommendations.length === 0 ? (
+            <EmptyState text="Study more concepts to get recommendations" />
+          ) : (
+            <div className="space-y-3">
+              {recommendations.map((rec) => (
+                <div key={rec.concept_id} className="group">
+                  <button
+                    className="w-full text-left"
+                    onClick={() => navigate(`/?topic=${encodeURIComponent(rec.concept_name)}`)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm text-focus-text group-hover:text-violet-400 transition-colors truncate">
+                        {rec.concept_name}
+                      </span>
+                      <span className="text-xs font-mono text-focus-text-muted shrink-0">
+                        {Math.round(rec.score)}/100
+                      </span>
+                    </div>
+                    <p className="text-xs text-focus-text-dim mt-0.5">{rec.reason}</p>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
         {/* Review Section */}
         <SectionCard
           title="Spaced Review"
@@ -343,6 +384,43 @@ export default function Dashboard() {
           )}
         </SectionCard>
       </div>
+
+      {/* Today Widget */}
+      {todayGoal && (
+        <div className="bg-focus-surface border border-focus-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-focus-text flex items-center gap-2">
+              <span>&#128293;</span> Today
+            </h3>
+            {todayGoal.streak_days > 0 && (
+              <span className="text-xs font-bold text-focus-amber">
+                {todayGoal.streak_days} day streak
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-6">
+            <div>
+              <div className="text-2xl font-bold text-focus-teal">
+                {Math.floor(todayGoal.actual_minutes)}
+                <span className="text-sm font-normal text-focus-text-muted ml-1">min</span>
+              </div>
+              <div className="text-xs text-focus-text-dim">studied today</div>
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between text-xs text-focus-text-muted mb-1">
+                <span>Daily goal</span>
+                <span>{Math.round(todayGoal.actual_minutes)}/{todayGoal.target_minutes} min</span>
+              </div>
+              <div className="w-full bg-focus-border rounded-full h-2">
+                <div
+                  className="h-2 rounded-full bg-focus-teal transition-all"
+                  style={{ width: `${Math.min((todayGoal.actual_minutes / todayGoal.target_minutes) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent Activity Feed */}
       <div className="bg-focus-surface border border-focus-border rounded-xl p-5">

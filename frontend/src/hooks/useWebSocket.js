@@ -72,6 +72,31 @@ function wsReducer(state, action) {
     case "SUMMARY":
       persistSessionState("ws_summary", action.content);
       return { ...state, thinking: false, summary: action.content };
+    case "STREAM_START":
+      return {
+        ...state,
+        thinking: false,
+        messages: [
+          ...state.messages,
+          { agent: action.agent, content: "", isNew: true, streaming: true },
+        ],
+      };
+    case "STREAM_CHUNK": {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.streaming) {
+        msgs[msgs.length - 1] = { ...last, content: last.content + action.content };
+      }
+      return { ...state, messages: msgs };
+    }
+    case "STREAM_END": {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.streaming) {
+        msgs[msgs.length - 1] = { ...last, streaming: false };
+      }
+      return { ...state, messages: msgs };
+    }
     case "ERROR":
       return {
         ...state,
@@ -210,6 +235,15 @@ export default function useWebSocket(sessionId, initialMessages = []) {
             difficulty: data.difficulty, leetcode_id: data.leetcode_id,
           });
           break;
+        case "stream_start":
+          dispatch({ type: "STREAM_START", agent: data.agent });
+          break;
+        case "stream_chunk":
+          dispatch({ type: "STREAM_CHUNK", content: data.content });
+          break;
+        case "stream_end":
+          dispatch({ type: "STREAM_END" });
+          break;
         case "comprehension_mcqs":
           dispatch({ type: "COMPREHENSION_MCQS", questions: data.questions });
           break;
@@ -265,9 +299,9 @@ export default function useWebSocket(sessionId, initialMessages = []) {
     }
   }, []);
 
-  const sendCodeAnswer = useCallback((code) => {
+  const sendCodeAnswer = useCallback((code, language = "python") => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "code_answer", code }));
+      wsRef.current.send(JSON.stringify({ type: "code_answer", code, language }));
       dispatch({ type: "CLEAR_CODE_CHALLENGE" });
     }
   }, []);

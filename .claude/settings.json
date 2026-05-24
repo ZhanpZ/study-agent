@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Recurse \"c:\\\\Users\\\\zengm\\\\OneDrive\\\\桌面\\\\Info\\\\study-agent\" -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\zengm\\\\OneDrive\\\\桌面\\\\Info\\\\study-agent\\\\frontend\" -Recurse -Directory)"
+    ]
+  }
+}

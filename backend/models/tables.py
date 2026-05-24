@@ -10,6 +10,8 @@ class Concept(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+    prerequisites: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
@@ -70,6 +72,7 @@ class Session(Base):
     phase: Mapped[str] = mapped_column(String(50), default="explain")
     mode: Mapped[str] = mapped_column(String(20), default="concept")
     summary: Mapped[str] = mapped_column(Text, nullable=True, default=None)
+    phase_timestamps: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     started_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
@@ -119,6 +122,20 @@ class QuizFeedback(Base):
     __table_args__ = (
         Index("ix_quiz_feedback_quiz_type", "quiz_type"),
         Index("ix_quiz_feedback_created_at", "created_at"),
+    )
+
+
+class StudyGoal(Base):
+    __tablename__ = "study_goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[str] = mapped_column(String(10), nullable=False, unique=True)  # YYYY-MM-DD
+    target_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    actual_minutes: Mapped[float] = mapped_column(Float, default=0.0)
+    streak_days: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (
+        Index("ix_study_goals_date", "date"),
     )
 
 

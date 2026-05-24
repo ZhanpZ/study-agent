@@ -4,11 +4,10 @@ from backend.agents.professor import create_professor_agent, explain_concept, an
 from backend.agents.student import create_student_agent, ask_questions
 from backend.agents.tester import (
     create_tester_agent, evaluate_understanding, generate_mcq, score_mcq,
-    generate_code_challenge, evaluate_code,
+    generate_code_challenge, evaluate_code, detect_critical_errors,
 )
 from backend.models.schemas import TesterEvaluation
 from backend.config import MAX_TEACH_ROUNDS, MASTERY_SCORE_THRESHOLD, MIN_TEACH_BEFORE_EVAL, EVAL_EVERY_N_ROUNDS
-
 
 class Phase(str, Enum):
     EXPLAIN = "explain"
@@ -18,7 +17,6 @@ class Phase(str, Enum):
     QUIZ = "quiz"  # MCQ phase for concept mode
     COMPLETE = "complete"
     REVIEW = "review"
-
 
 @dataclass
 class SessionState:
@@ -32,6 +30,7 @@ class SessionState:
     last_evaluation: TesterEvaluation | None = None
     mcq_questions: list[dict] | None = None  # stored MCQs for scoring
     code_challenge: dict | None = None  # stored code challenge for evaluation
+    pending_gaps: list[str] = field(default_factory=list)  # gaps from last eval to target next teach round
 
 
 _professor_agent: "Agent | None" = None
@@ -187,7 +186,10 @@ class Orchestrator:
             state.phase = Phase.EVALUATE
             return self._handle_evaluate(state)
 
-        # Student asks follow-up questions
+        # Detect factual errors in the user's explanation (lightweight check)
+        critical_errors = detect_critical_errors(state.topic, user_message)
+
+        # Student asks follow-up questions, injecting detected errors + pending gaps
         response = ask_questions(
             self.student,
             state.topic,
@@ -195,7 +197,11 @@ class Orchestrator:
             state.conversation_history,
             state.skill_level,
             mode=state.mode,
+            critical_errors=critical_errors,
+            pending_gaps=state.pending_gaps,
         )
+        # Clear pending gaps after first use (they've been addressed)
+        state.pending_gaps = []
         state.conversation_history.append({
             "role": "assistant",
             "agent": "student",
@@ -239,7 +245,7 @@ class Orchestrator:
         return self._finalize_evaluation(state, evaluation)
 
     def process_code_answer(
-        self, state: SessionState, code: str
+        self, state: SessionState, code: str, language: str = "python"
     ) -> tuple[str, str, SessionState]:
         """Evaluate user's code submission."""
         evaluation = evaluate_code(
@@ -249,6 +255,7 @@ class Orchestrator:
             code,
             state.conversation_history,
             mode=state.mode,
+            language=language,
         )
         return self._finalize_evaluation(state, evaluation)
 
@@ -282,10 +289,19 @@ class Orchestrator:
             )
         else:
             state.phase = Phase.TEACH
-            feedback += (
-                "Let's continue practicing. Try explaining the areas I identified "
-                "as gaps. Focus especially on the 'why' behind these concepts."
-            )
+            # Store gaps so the next teach round specifically targets them
+            state.pending_gaps = evaluation.gaps[:]
+            if evaluation.gaps:
+                gap_list = "\n".join(f"- {g}" for g in evaluation.gaps)
+                feedback += (
+                    f"Let's continue practicing. In your next explanation, specifically address:\n"
+                    f"{gap_list}\n\nFocus on the 'why' behind these areas."
+                )
+            else:
+                feedback += (
+                    "Let's continue practicing. Try explaining the areas I identified "
+                    "as gaps. Focus especially on the 'why' behind these concepts."
+                )
 
         state.conversation_history.append({
             "role": "assistant",
