@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(./venv/Scripts/python:*)",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(npx vite build)",
+      "Bash(npm run build:*)",
+      "Bash(wc:*)",
+      "Bash(sqlite3:*)",
+      "Bash(grep:*)",
+      "Bash(pip show:*)",
+      "Bash(pip install -r requirements-dev.txt)",
+      "Bash(npx vitest run)",
+      "Bash(node_modules/.bin/vite build *)"
+    ]
+  }
+}
