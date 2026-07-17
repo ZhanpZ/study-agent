@@ -13,7 +13,7 @@ import CodeBlock from "./CodeBlock";
 
 export default function Chat({
   messages, phase, score, gaps, connected, mode,
-  mcqQuestions, codeChallenge, summary, comprehensionMcqs,
+  mcqQuestions, mcqSubmittedAnswers, codeChallenge, summary, comprehensionMcqs,
   thinking, connectionStatus, phaseTransition,
   onSend, onReadyToTeach, onSubmitMCQ, onSubmitCode,
 }) {
@@ -122,7 +122,7 @@ export default function Chat({
     <div className="flex flex-col h-full">
       {/* Connection status banner */}
       {connectionStatus === "reconnecting" && (
-        <div className="mb-3 px-4 py-2.5 bg-amber-950/80 border border-amber-800/60 rounded-xl text-xs text-amber-300 flex items-center gap-2.5">
+        <div className="mb-3 px-4 py-2.5 bg-focus-surface border border-focus-border rounded-xl text-xs text-focus-text-muted flex items-center gap-2.5">
           <svg className="animate-spin h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 12a9 9 0 11-6.219-8.56"/>
           </svg>
@@ -140,7 +140,7 @@ export default function Chat({
 
       {/* Phase transition notification */}
       {phaseTransition && (
-        <div className="mb-3 px-4 py-3 bg-indigo-950/80 border border-indigo-800/60 rounded-xl text-sm text-indigo-200 text-center font-semibold animate-slide-in animate-phase-shimmer">
+        <div className="mb-3 px-4 py-3 bg-focus-surface border border-focus-border rounded-xl text-sm text-focus-text-muted text-center font-semibold animate-slide-in animate-phase-shimmer">
           Entering: {phaseTransition} phase
         </div>
       )}
@@ -163,13 +163,13 @@ export default function Chat({
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-focus-text-muted uppercase tracking-wide">Understanding Score</span>
             <span className={`text-lg font-bold tabular-nums ${
-              score >= 80 ? "text-green-400" : score >= 50 ? "text-amber-400" : "text-red-400"
+              score >= 80 ? "text-focus-teal" : score >= 50 ? "text-focus-amber" : "text-red-400"
             }`}>{displayedScore}</span>
           </div>
           <div className="w-full bg-focus-border rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all duration-700 ease-out ${
-                score >= 80 ? "bg-green-500" : score >= 50 ? "bg-amber-500" : "bg-red-500"
+                score >= 80 ? "bg-focus-teal" : score >= 50 ? "bg-focus-amber" : "bg-red-500"
               } ${scoreGlow ? "animate-score-glow" : ""}`}
               style={{ width: `${score}%` }}
             />
@@ -198,9 +198,9 @@ export default function Chat({
           <div className="p-4 text-sm text-gray-200 prose prose-invert prose-sm max-w-none
                           prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
                           prose-p:my-1.5 prose-li:my-0 prose-ul:my-1.5 prose-ol:my-1.5
-                          prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+                          prose-code:text-focus-teal prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
                           prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
-                          prose-strong:text-gray-100 prose-a:text-indigo-400 max-h-80 overflow-y-auto">
+                          prose-strong:text-gray-100 prose-a:text-focus-teal max-h-80 overflow-y-auto">
             <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]} components={{ code: CodeBlock }}>
               {summary}
             </ReactMarkdown>
@@ -235,26 +235,30 @@ export default function Chat({
             {/* Thinking indicator */}
             {thinking && (
               <div className="flex items-start gap-3 py-3 px-1">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0 border border-blue-500/20">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-400">
+                <div className="w-8 h-8 rounded-lg bg-focus-teal/10 flex items-center justify-center shrink-0 border border-focus-teal/20">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-focus-teal">
                     <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                   </svg>
                 </div>
                 <div className="bg-focus-surface border border-focus-border rounded-xl px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">Thinking</span>
-                    <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                    <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                    <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                    <span className="text-xs text-focus-text-muted">Thinking</span>
+                    <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-focus-teal"></span>
+                    <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-focus-teal"></span>
+                    <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-focus-teal"></span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* MCQ panel */}
-            {phase === "quiz" && mcqQuestions && (
+            {/* MCQ panel — interactive during quiz phase, results mode after submission */}
+            {mcqQuestions && (phase === "quiz" || mcqSubmittedAnswers) && (
               <div className="my-4">
-                <MCQPanel questions={mcqQuestions} onSubmit={onSubmitMCQ} />
+                <MCQPanel
+                  questions={mcqQuestions}
+                  onSubmit={onSubmitMCQ}
+                  submittedAnswers={mcqSubmittedAnswers}
+                />
               </div>
             )}
 
@@ -292,8 +296,8 @@ export default function Chat({
               disabled={thinking}
               className={`w-full py-3 mb-3 text-white font-medium rounded-xl transition-all disabled:opacity-50 btn-interactive btn-ripple ${
                 isLeetcode
-                  ? "bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-900/20"
-                  : "bg-green-600 hover:bg-green-500 shadow-lg shadow-green-900/20"
+                  ? "bg-focus-teal hover:bg-focus-teal-light shadow-lg shadow-focus-teal/10"
+                  : "bg-focus-teal hover:bg-focus-teal-light shadow-lg shadow-focus-teal/10"
               }`}
             >
               {isLeetcode ? "Ready for Challenge" : "I'm Ready to Teach"}

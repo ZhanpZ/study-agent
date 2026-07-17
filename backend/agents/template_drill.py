@@ -4,7 +4,8 @@ import random
 from crewai import Agent, Task
 from pydantic import BaseModel, Field
 from backend.config import LLM_MATH  # temp=0.2, good for code evaluation
-from backend.utils import extract_json
+from backend.utils import parse_and_validate
+from backend.services.llm_guard import call_agent_task, LLMCallFailedError
 
 logger = logging.getLogger(__name__)
 
@@ -765,28 +766,18 @@ def evaluate_template(agent: Agent, template: dict, user_code: str) -> dict:
         agent=agent,
     )
 
-    result = str(agent.execute_task(task))
-    data = extract_json(result)
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("evaluate_template LLM call failed: %s", e)
+        result = ""
 
-    if not data or not isinstance(data, dict):
-        logger.warning("Failed to parse template evaluation: %s", result[:300])
+    validated = parse_and_validate(result, TemplateEvaluation)
+    if validated is None:
+        logger.warning("Failed to parse/validate template evaluation: %s", result[:300])
         return {
-            "overall_score": 0,
-            "structural_correctness": 0,
-            "algorithmic_correctness": 0,
-            "complexity_correctness": 0,
-            "edge_case_handling": 0,
-            "code_quality": 0,
-            "missing_methods": [],
-            "bugs": [],
+            **TemplateEvaluation().model_dump(),
             "feedback": "Failed to evaluate your code. Please try again.",
-            "corrected_code": "",
         }
 
-    # Ensure all expected fields exist with defaults
-    defaults = TemplateEvaluation().model_dump()
-    for key, default_val in defaults.items():
-        if key not in data:
-            data[key] = default_val
-
-    return data
+    return validated.model_dump()

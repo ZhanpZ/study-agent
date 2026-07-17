@@ -19,6 +19,7 @@ function initState(sessionId) {
     score: null,
     gaps: [],
     mcqQuestions: isMatch ? loadSessionState("ws_mcqQuestions", null) : null,
+    mcqSubmittedAnswers: null,
     codeChallenge: isMatch ? loadSessionState("ws_codeChallenge", null) : null,
     summary: isMatch ? loadSessionState("ws_summary", null) : null,
     comprehensionMcqs: isMatch ? loadSessionState("ws_comprehensionMcqs", []) : [],
@@ -53,8 +54,10 @@ function wsReducer(state, action) {
       return { ...state, thinking: false, score: action.score, gaps: action.gaps || [] };
     case "MCQ": {
       persistSessionState("ws_mcqQuestions", action.questions);
-      return { ...state, thinking: false, mcqQuestions: action.questions, phase: "quiz" };
+      return { ...state, thinking: false, mcqQuestions: action.questions, mcqSubmittedAnswers: null, phase: "quiz" };
     }
+    case "SUBMIT_MCQ":
+      return { ...state, thinking: true, mcqSubmittedAnswers: action.answers };
     case "CODE_CHALLENGE": {
       const challenge = { problem: action.problem, hints: action.hints || [] };
       if (action.url) challenge.url = action.url;
@@ -132,7 +135,9 @@ function wsReducer(state, action) {
       sessionStorage.removeItem("ws_comprehensionMcqs");
       return {
         ...state,
+        messages: [],
         mcqQuestions: null,
+        mcqSubmittedAnswers: null,
         codeChallenge: null,
         summary: null,
         comprehensionMcqs: [],
@@ -295,7 +300,7 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   const sendMCQAnswers = useCallback((answers) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "mcq_answers", answers }));
-      dispatch({ type: "CLEAR_MCQ" });
+      dispatch({ type: "SUBMIT_MCQ", answers });
     }
   }, []);
 
@@ -332,7 +337,8 @@ export default function useWebSocket(sessionId, initialMessages = []) {
   return {
     messages: state.messages, phase: state.phase,
     score: state.score, gaps: state.gaps, connected,
-    mcqQuestions: state.mcqQuestions, codeChallenge: state.codeChallenge,
+    mcqQuestions: state.mcqQuestions, mcqSubmittedAnswers: state.mcqSubmittedAnswers,
+    codeChallenge: state.codeChallenge,
     summary: state.summary, comprehensionMcqs: state.comprehensionMcqs,
     thinking: state.thinking, connectionStatus: state.connectionStatus,
     phaseTransition: state.phaseTransition,

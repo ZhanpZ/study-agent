@@ -3,12 +3,15 @@ import { useToast } from "../components/Toast";
 import { getConstraintScore } from "../utils/quizScoring";
 import ReportButton from "../components/ReportButton";
 import usePersistedState from "../hooks/usePersistedState";
+import GeneratingLoader from "../components/GeneratingLoader";
 import saveQuizHistory from "../utils/saveQuizHistory";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
+import DSATemplateDrill from "./DSATemplateDrill";
 
 const TABS = [
   { key: "algorithm", label: "Algorithm Selection" },
   { key: "constraint", label: "Constraint Matching" },
+  { key: "dsa", label: "DSA Drill" },
 ];
 
 
@@ -27,7 +30,7 @@ export default function AlgorithmQuiz() {
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === tab.key
-                ? "bg-amber-600 text-white"
+                ? "bg-focus-teal text-white"
                 : "text-gray-400 hover:text-white"
             }`}
           >
@@ -36,7 +39,9 @@ export default function AlgorithmQuiz() {
         ))}
       </div>
 
-      {activeTab === "algorithm" ? <AlgorithmTab /> : <ConstraintTab />}
+      {activeTab === "algorithm" && <AlgorithmTab />}
+      {activeTab === "constraint" && <ConstraintTab />}
+      {activeTab === "dsa" && <DSATemplateDrill hideHeader />}
     </div>
   );
 }
@@ -50,6 +55,7 @@ function AlgorithmTab() {
   const [revealed, setRevealed] = usePersistedState("algoQuiz_revealed", {});
   const [weaknesses, setWeaknesses] = usePersistedState("algoQuiz_weaknesses", null);
   const [masteryData, setMasteryData] = usePersistedState("algoQuiz_mastery", null);
+  const [hasSaved, setHasSaved] = usePersistedState("algoQuiz_hasSaved", false);
   const { addToast } = useToast();
 
   // Fetch weakness profile once on mount
@@ -60,12 +66,11 @@ function AlgorithmTab() {
       .catch(() => {});
   }, []);
 
-  // Fetch full history to build mastery bars
-  useEffect(() => {
+  const refreshMastery = () =>
     fetchWithTimeout("/api/quiz-history?quiz_type=algorithm&limit=100", {}, 10000)
       .then((r) => r.json())
       .then((entries) => {
-        const algoCounts = {}; // { algoName: { correct: n, total: n } }
+        const algoCounts = {};
         for (const entry of entries) {
           const qs = entry.questions || [];
           const ans = entry.answers || {};
@@ -90,18 +95,21 @@ function AlgorithmTab() {
         setMasteryData(sorted);
       })
       .catch(() => {});
-  }, []);
+
+  // Fetch full history to build mastery bars on mount
+  useEffect(() => { refreshMastery(); }, []);
 
   const generateQuiz = async () => {
     setLoading(true);
     setQuestions(null);
     setAnswers({});
     setRevealed({});
+    setHasSaved(false);
     try {
       // Build focus param from top weaknesses
       const top = (weaknesses || []).slice(0, 3).map((w) => w.algorithm);
       const focusParam = top.length > 0 ? `&focus=${encodeURIComponent(top.join(","))}` : "";
-      const res = await fetchWithTimeout(`/api/algorithm-quiz?count=5${focusParam}`, {}, 30000);
+      const res = await fetchWithTimeout(`/api/algorithm-quiz?count=5${focusParam}`, {}, 90000);
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (!data.questions || data.questions.length === 0) {
@@ -128,14 +136,15 @@ function AlgorithmTab() {
     ? questions.filter((q, i) => revealed[i] && answers[i] === q.correct).length
     : 0;
 
-  // Auto-save when all questions answered
+  // Auto-save when all questions answered, then refresh mastery bars
   useEffect(() => {
-    if (questions && totalAnswered === questions.length) {
+    if (questions && totalAnswered === questions.length && !hasSaved) {
+      setHasSaved(true);
       saveQuizHistory(
         "algorithm", "all", questions, answers,
         Math.round((totalCorrect / questions.length) * 100),
         addToast,
-      );
+      ).then(() => refreshMastery());
     }
   }, [totalAnswered]);
 
@@ -146,15 +155,17 @@ function AlgorithmTab() {
       </p>
 
       <div className="flex items-center gap-4 mb-6 flex-wrap">
-        <button
-          onClick={generateQuiz}
-          disabled={loading}
-          className="px-6 py-3 bg-amber-600 text-white font-medium rounded-lg
-                     hover:bg-amber-500 disabled:opacity-50 transition-colors"
-        >
-          {loading ? "Generating..." : "Generate Quiz"}
-        </button>
-        {weaknesses && weaknesses.length > 0 && (
+        {!questions && (
+          <button
+            onClick={generateQuiz}
+            disabled={loading}
+            className="px-6 py-3 bg-focus-teal text-white font-medium rounded-lg
+                       hover:bg-focus-teal-light disabled:opacity-50 transition-colors"
+          >
+            {loading ? "Generating…" : "Generate Quiz"}
+          </button>
+        )}
+        {weaknesses && weaknesses.length > 0 && !loading && (
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>Targeting weak areas:</span>
             {weaknesses.slice(0, 3).map((w) => (
@@ -166,8 +177,21 @@ function AlgorithmTab() {
         )}
       </div>
 
+      {loading && (
+        <GeneratingLoader
+          messages={[
+            "Crafting algorithm questions…",
+            "Tailoring to your weak areas…",
+            "Setting difficulty levels…",
+            "Verifying answer options…",
+            "Almost ready…",
+          ]}
+          note="AI generation typically takes 30–60 seconds"
+        />
+      )}
+
       {/* Per-algorithm mastery bars */}
-      {masteryData && masteryData.length > 0 && (
+      {!loading && masteryData && masteryData.length > 0 && (
         <div className="mb-8 rounded-xl border border-focus-border bg-focus-surface p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Algorithm Mastery</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -175,13 +199,13 @@ function AlgorithmTab() {
               <div key={algo}>
                 <div className="flex items-center justify-between text-xs mb-0.5">
                   <span className="text-gray-400 truncate max-w-[150px]">{algo}</span>
-                  <span className={`font-medium tabular-nums ${pct >= 70 ? "text-green-400" : pct >= 40 ? "text-amber-400" : "text-red-400"}`}>
+                  <span className={`font-medium tabular-nums ${pct >= 70 ? "text-focus-teal" : pct >= 40 ? "text-focus-amber" : "text-red-400"}`}>
                     {correct}/{total}
                   </span>
                 </div>
                 <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                    className={`h-full rounded-full transition-all duration-500 ${pct >= 70 ? "bg-focus-teal" : pct >= 40 ? "bg-focus-amber" : "bg-red-500"}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -191,7 +215,7 @@ function AlgorithmTab() {
         </div>
       )}
 
-      {questions && totalAnswered > 0 && (
+      {!loading && questions && totalAnswered > 0 && (
         <div className="mb-6 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
           <span className="text-sm text-gray-400">
             Score: <span className="text-white font-bold">{totalCorrect}/{totalAnswered}</span>
@@ -204,7 +228,7 @@ function AlgorithmTab() {
         </div>
       )}
 
-      {questions && (
+      {!loading && questions && (
         <div className="space-y-6">
           {questions.map((q, qIdx) => (
             <AlgorithmQuestion
@@ -218,6 +242,19 @@ function AlgorithmTab() {
             />
           ))}
         </div>
+      )}
+
+      {/* Floating "Generate New Quiz" — appears once all questions are answered */}
+      {questions && totalAnswered === questions.length && !loading && (
+        <button
+          onClick={generateQuiz}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3
+                     bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-full
+                     shadow-lg shadow-black/40 transition-colors"
+        >
+          <span className="text-base leading-none">↺</span>
+          Generate New Quiz
+        </button>
       )}
     </>
   );
@@ -246,6 +283,7 @@ function ConstraintTab() {
   // selections stored as { qIdx: [letters] } arrays (Sets aren't JSON-serializable)
   const [selectionsRaw, setSelectionsRaw] = usePersistedState("constQuiz_selections", {});
   const [revealed, setRevealed] = usePersistedState("constQuiz_revealed", {});
+  const [hasSaved, setHasSaved] = usePersistedState("constQuiz_hasSaved", false);
   const [showRef, setShowRef] = useState(false);
   const { addToast } = useToast();
 
@@ -276,8 +314,9 @@ function ConstraintTab() {
     setQuestions(null);
     setSelectionsRaw({});
     setRevealed({});
+    setHasSaved(false);
     try {
-      const res = await fetchWithTimeout("/api/constraint-quiz?count=5", {}, 30000);
+      const res = await fetchWithTimeout("/api/constraint-quiz?count=5", {}, 90000);
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
       if (!data.questions || data.questions.length === 0) {
@@ -325,9 +364,10 @@ function ConstraintTab() {
       }).length
     : 0;
 
-  // Auto-save when all questions answered
+  // Auto-save when all questions answered (guard against re-save on navigation back)
   useEffect(() => {
-    if (questions && totalAnswered === questions.length) {
+    if (questions && totalAnswered === questions.length && !hasSaved) {
+      setHasSaved(true);
       const selObj = {};
       for (const [k, v] of Object.entries(selections)) {
         selObj[k] = [...v];
@@ -370,7 +410,7 @@ function ConstraintTab() {
               <tbody>
                 {COMPLEXITY_REFERENCE.map((row, i) => (
                   <tr key={i} className="border-b border-gray-800 text-gray-300">
-                    <td className="px-3 py-1.5 font-mono text-amber-400 whitespace-nowrap">{row.constraint}</td>
+                    <td className="px-3 py-1.5 font-mono text-focus-amber whitespace-nowrap">{row.constraint}</td>
                     <td className="px-3 py-1.5 font-mono whitespace-nowrap">{row.complexity}</td>
                     <td className="px-3 py-1.5">{row.algorithms}</td>
                   </tr>
@@ -381,16 +421,33 @@ function ConstraintTab() {
         )}
       </div>
 
-      <button
-        onClick={generateQuiz}
-        disabled={loading}
-        className="px-6 py-3 bg-amber-600 text-white font-medium rounded-lg
-                   hover:bg-amber-500 disabled:opacity-50 transition-colors mb-8"
-      >
-        {loading ? "Generating..." : "Generate Quiz"}
-      </button>
+      {!questions && (
+        <div className="flex items-center gap-4 mb-8">
+          <button
+            onClick={generateQuiz}
+            disabled={loading}
+            className="px-6 py-3 bg-focus-teal text-white font-medium rounded-lg
+                       hover:bg-focus-teal-light disabled:opacity-50 transition-colors"
+          >
+            {loading ? "Generating…" : "Generate Quiz"}
+          </button>
+        </div>
+      )}
 
-      {questions && totalAnswered > 0 && (
+      {loading && (
+        <GeneratingLoader
+          messages={[
+            "Building constraint scenarios…",
+            "Matching complexity bounds…",
+            "Generating multi-select options…",
+            "Checking answer coverage…",
+            "Almost ready…",
+          ]}
+          note="AI generation typically takes 30–60 seconds"
+        />
+      )}
+
+      {!loading && questions && totalAnswered > 0 && (
         <div className="mb-6 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
           <span className="text-sm text-gray-400">
             Perfect: <span className="text-white font-bold">{totalPerfect}/{totalAnswered}</span>
@@ -403,7 +460,7 @@ function ConstraintTab() {
         </div>
       )}
 
-      {questions && (
+      {!loading && questions && (
         <div className="space-y-6">
           {questions.map((q, qIdx) => (
             <ConstraintQuestion
@@ -419,6 +476,19 @@ function ConstraintTab() {
             />
           ))}
         </div>
+      )}
+
+      {/* Floating "Generate New Quiz" — appears once all questions are answered */}
+      {questions && totalAnswered === questions.length && !loading && (
+        <button
+          onClick={generateQuiz}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3
+                     bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-full
+                     shadow-lg shadow-black/40 transition-colors"
+        >
+          <span className="text-base leading-none">↺</span>
+          Generate New Quiz
+        </button>
       )}
     </>
   );
@@ -448,7 +518,7 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
               where{" "}
               {Object.entries(question.variables).map(([v, desc], i, arr) => (
                 <span key={v}>
-                  <span className="text-amber-400 font-mono">{v}</span>
+                  <span className="text-focus-amber font-mono">{v}</span>
                   <span> = {desc}</span>
                   {i < arr.length - 1 && ", "}
                 </span>
@@ -468,14 +538,14 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
             "bg-gray-900/40 border-gray-700 text-gray-300 hover:border-gray-500 cursor-pointer";
           if (isRevealed) {
             if (isCorrectOption) {
-              optionClass = "bg-green-900/30 border-green-600 text-green-300";
+              optionClass = "bg-focus-teal/15 border-focus-teal/50 text-focus-teal";
             } else if (isSelected) {
               optionClass = "bg-red-900/30 border-red-600 text-red-300";
             } else {
               optionClass = "bg-gray-900/40 border-gray-700 text-gray-400";
             }
           } else if (isSelected) {
-            optionClass = "bg-indigo-600/30 border-indigo-500 text-white";
+            optionClass = "bg-focus-teal/20 border-focus-teal/60 text-white";
           }
 
           return (
@@ -495,7 +565,7 @@ function AlgorithmQuestion({ index, question, selectedAnswer, isRevealed, onSele
         <div
           className={`text-sm p-3 rounded-lg ${
             selectedAnswer === question.correct
-              ? "bg-green-900/20 text-green-400 border border-green-700/50"
+              ? "bg-focus-teal/10 text-focus-teal border border-focus-teal/25"
               : "bg-red-900/20 text-red-400 border border-red-700/50"
           }`}
         >
@@ -522,7 +592,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
             {question.keywords.map((kw, i) => (
               <span
                 key={i}
-                className="px-2 py-0.5 bg-amber-600/20 border border-amber-600/40 rounded text-xs text-amber-300 font-medium"
+                className="px-2 py-0.5 bg-focus-teal/10 border border-focus-teal/30 rounded text-xs text-focus-teal font-medium"
               >
                 {kw}
               </span>
@@ -541,7 +611,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
                 where{" "}
                 {Object.entries(question.variables).map(([v, desc], i, arr) => (
                   <span key={v}>
-                    <span className="text-amber-400 font-mono">{v}</span>
+                    <span className="text-focus-amber font-mono">{v}</span>
                     <span> = {desc}</span>
                     {i < arr.length - 1 && ", "}
                   </span>
@@ -569,16 +639,16 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
             "bg-gray-900/40 border-gray-700 text-gray-300 hover:border-gray-500 cursor-pointer";
           if (isRevealed) {
             if (isCorrect && isSelected) {
-              optionClass = "bg-green-900/30 border-green-600 text-green-300";
+              optionClass = "bg-focus-teal/15 border-focus-teal/50 text-focus-teal";
             } else if (isCorrect && !isSelected) {
-              optionClass = "bg-yellow-900/30 border-yellow-600 text-yellow-300";
+              optionClass = "bg-focus-amber/10 border-focus-amber/50 text-focus-amber";
             } else if (!isCorrect && isSelected) {
               optionClass = "bg-red-900/30 border-red-600 text-red-300";
             } else {
               optionClass = "bg-gray-900/40 border-gray-700 text-gray-400";
             }
           } else if (isSelected) {
-            optionClass = "bg-indigo-600/30 border-indigo-500 text-white";
+            optionClass = "bg-focus-teal/20 border-focus-teal/60 text-white";
           }
 
           return (
@@ -591,8 +661,8 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
               <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${
                 isSelected
                   ? isRevealed
-                    ? isCorrect ? "bg-green-600 border-green-600" : "bg-red-600 border-red-600"
-                    : "bg-indigo-600 border-indigo-600"
+                    ? isCorrect ? "bg-focus-teal border-focus-teal" : "bg-red-600 border-red-600"
+                    : "bg-focus-teal border-focus-teal"
                   : "border-gray-600"
               }`}>
                 {isSelected && "✓"}
@@ -607,7 +677,7 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
       {selected.size > 0 && !isRevealed && (
         <button
           onClick={onReveal}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 transition-colors"
+          className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
         >
           Check Answer
         </button>
@@ -617,8 +687,8 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
       {isRevealed && score && (
         <div className={`text-sm p-3 rounded-lg space-y-1 ${
           score.wrongPicks === 0 && score.missed === 0
-            ? "bg-green-900/20 text-green-400 border border-green-700/50"
-            : "bg-amber-900/20 text-amber-400 border border-amber-700/50"
+            ? "bg-focus-teal/10 text-focus-teal border border-focus-teal/25"
+            : "bg-focus-amber/10 text-focus-amber border border-focus-amber/25"
         }`}>
           <div className="font-medium">
             {score.wrongPicks === 0 && score.missed === 0
@@ -646,9 +716,9 @@ function ConstraintQuestion({ index, question, selected, isRevealed, score, onTo
               const hint = question.solution_hints[letter];
               if (!hint) return null;
               return (
-                <div key={letter} className="text-xs p-3 rounded-lg bg-yellow-900/15 border border-yellow-700/40">
-                  <span className="font-medium text-yellow-300">{option}</span>
-                  <p className="text-yellow-200/70 mt-1">{hint}</p>
+                <div key={letter} className="text-xs p-3 rounded-lg bg-focus-amber/10 border border-focus-amber/25">
+                  <span className="font-medium text-focus-amber">{option}</span>
+                  <p className="text-focus-text-muted mt-1">{hint}</p>
                 </div>
               );
             })}

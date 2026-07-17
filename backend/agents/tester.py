@@ -5,8 +5,12 @@ import time
 from collections import OrderedDict
 from crewai import Agent, Task
 from backend.config import MODEL_STRONG, MODEL_FAST, MASTERY_SCORE_THRESHOLD, LLM_COMPREHENSION
-from backend.models.schemas import TesterEvaluation
-from backend.utils import extract_json
+from backend.models.schemas import TesterEvaluation, MCQResponse, CodeChallengeResponse
+from backend.utils import extract_json, parse_and_validate
+from backend.services.llm_guard import (
+    call_agent_task, LLMCallFailedError, check_circuit, record_success, record_failure,
+    LLMCircuitOpenError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +70,11 @@ def evaluate_understanding(
         expected_output='Valid JSON: {"score": <number>, "gaps": [...], "mastered": <bool>, "feedback": "..."}',
         agent=agent,
     )
-    result = str(agent.execute_task(task))
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("evaluate_understanding LLM call failed for '%s': %s", topic, e)
+        result = ""
     return _parse_evaluation(result, previous_score)
 
 
@@ -96,13 +104,17 @@ def generate_mcq(
         expected_output="Valid JSON with 4 MCQs.",
         agent=agent,
     )
-    result = str(agent.execute_task(task))
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("generate_mcq LLM call failed for topic '%s': %s", topic, e)
+        result = ""
 
-    data = extract_json(result)
-    if data and isinstance(data, dict):
-        return data.get("questions", [])
+    validated = parse_and_validate(result, MCQResponse)
+    if validated is not None:
+        return [q.model_dump() for q in validated.questions]
 
-    logger.warning("Failed to parse MCQ JSON for topic '%s' | raw: %s", topic, result[:200])
+    logger.warning("Failed to parse/validate MCQ JSON for topic '%s' | raw: %s", topic, result[:200])
     return [
         {
             "question": f"What is the key concept behind {topic}?",
@@ -205,16 +217,17 @@ def generate_code_challenge(
         expected_output='Valid JSON: {"problem": "...", "hints": ["..."]}',
         agent=agent,
     )
-    result = str(agent.execute_task(task))
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("generate_code_challenge LLM call failed for topic '%s': %s", topic, e)
+        result = ""
 
-    data = extract_json(result)
-    if data and isinstance(data, dict):
-        return {
-            "problem": data.get("problem", f"Write a solution related to {topic}"),
-            "hints": data.get("hints", []),
-        }
+    validated = parse_and_validate(result, CodeChallengeResponse)
+    if validated is not None:
+        return validated.model_dump()
 
-    logger.warning("Failed to parse code challenge JSON for '%s' | raw: %s", topic, result[:200])
+    logger.warning("Failed to parse/validate code challenge JSON for '%s' | raw: %s", topic, result[:200])
     return {
         "problem": f"Write a complete implementation of {topic} in Python.",
         "hints": ["Think about edge cases", "Consider time complexity"],
@@ -260,7 +273,11 @@ def evaluate_code(
         expected_output='Valid JSON: {"score": <number>, "gaps": [...], "mastered": <bool>, "feedback": "..."}',
         agent=agent,
     )
-    result = str(agent.execute_task(task))
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("evaluate_code LLM call failed for topic '%s': %s", topic, e)
+        result = ""
     return _parse_evaluation(result, 0)
 
 
@@ -300,6 +317,11 @@ def detect_critical_errors(
         "Respond with ONLY valid JSON array."
     )
     try:
+        check_circuit()
+    except LLMCircuitOpenError as e:
+        logger.warning("detect_critical_errors skipped — circuit open: %s", e)
+        return []
+    try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -307,10 +329,12 @@ def detect_critical_errors(
             max_tokens=300,
         )
         raw = response.choices[0].message.content or "[]"
+        record_success()
         data = extract_json(raw)
         if isinstance(data, list):
             return [str(e) for e in data if e]
     except Exception as e:
+        record_failure()
         logger.warning("detect_critical_errors failed: %s", e)
     return []
 
@@ -356,7 +380,11 @@ def generate_comprehension_mcqs(
         expected_output=f"Valid JSON with {num_questions} comprehension MCQs.",
         agent=comprehension_agent,
     )
-    result = str(comprehension_agent.execute_task(task))
+    try:
+        result = call_agent_task(comprehension_agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("generate_comprehension_mcqs LLM call failed for '%s': %s", topic, e)
+        result = ""
 
     data = extract_json(result)
     if data and isinstance(data, dict):

@@ -2,20 +2,16 @@ import { useState, lazy, Suspense } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Study from "./pages/Study";
 import PomodoroTimer from "./components/PomodoroTimer";
+import TodayWidget from "./components/TodayWidget";
 
 // Lazy-load heavy pages to reduce initial bundle size
-const Review = lazy(() => import("./pages/Review"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AlgorithmQuiz = lazy(() => import("./pages/AlgorithmQuiz"));
 const Notes = lazy(() => import("./pages/Notes"));
-const DSATemplateDrill = lazy(() => import("./pages/DSATemplateDrill"));
 
 const NAV_ITEMS = [
   { path: "/", label: "Study", icon: "\u{1F4D6}" },
   { path: "/algorithm-quiz", label: "Algo Quiz", icon: "\u{1F9E9}" },
-  { path: "/dsa-templates", label: "DSA Drill", icon: "\u{1F3D7}" },
-  { path: "/notes", label: "Notes", icon: "\u{1F4DD}" },
-  { path: "/review", label: "Review", icon: "\u{1F504}" },
   { path: "/dashboard", label: "Dashboard", icon: "\u{1F4CA}" },
 ];
 
@@ -59,8 +55,11 @@ export default function App() {
                 {icon} {label}
               </Link>
             ))}
-            <div className="ml-3 border-l border-focus-border pl-3">
-              <PomodoroTimer />
+            <div className="ml-3 border-l border-focus-border pl-3 flex items-center gap-3">
+              <TodayWidget />
+              <div className="border-l border-focus-border pl-3">
+                <PomodoroTimer />
+              </div>
             </div>
           </nav>
         </div>
@@ -95,9 +94,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Study />} />
             <Route path="/algorithm-quiz" element={<AlgorithmQuiz />} />
-            <Route path="/dsa-templates" element={<DSATemplateDrill />} />
             <Route path="/notes" element={<Notes />} />
-            <Route path="/review" element={<Review />} />
             <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
         </Suspense>

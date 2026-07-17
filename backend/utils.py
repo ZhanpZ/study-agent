@@ -1,6 +1,8 @@
 import json
 import logging
 
+from pydantic import BaseModel, ValidationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,3 +30,19 @@ def extract_json(text: str) -> dict | list | None:
 
     logger.warning("No valid JSON found in text: %s", text[:200])
     return None
+
+
+def parse_and_validate(text: str, model: type[BaseModel]) -> BaseModel | None:
+    """Extract JSON from LLM output and validate it against a Pydantic model.
+
+    Returns None (logging a warning) if extraction fails or the shape doesn't
+    match — callers should apply their own fallback, same as extract_json().
+    """
+    data = extract_json(text)
+    if data is None:
+        return None
+    try:
+        return model.model_validate(data)
+    except ValidationError as e:
+        logger.warning("LLM output failed %s validation: %s | raw: %s", model.__name__, e, text[:200])
+        return None

@@ -67,9 +67,9 @@ export default function Review() {
     due: {
       label: "Due for Review",
       badgeColor: "text-focus-amber",
-      iconBg: "bg-orange-500/10 border-orange-500/20",
-      iconColor: "text-orange-400",
-      btnClass: "bg-orange-600 hover:bg-orange-500 shadow-orange-900/15",
+      iconBg: "bg-focus-amber/10 border-focus-amber/20",
+      iconColor: "text-focus-amber",
+      btnClass: "bg-focus-teal hover:bg-focus-teal-light shadow-focus-teal/10",
       btnText: "Review Now",
     },
     new: {

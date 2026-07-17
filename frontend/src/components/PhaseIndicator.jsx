@@ -23,10 +23,10 @@ const PHASE_MAP = {
 };
 
 const COLORS = {
-  explain: { bg: "bg-blue-500", glow: "shadow-blue-500/25", border: "border-blue-500/30", text: "text-blue-400", fill: "bg-blue-500/15", line: "bg-blue-500" },
-  teach: { bg: "bg-green-500", glow: "shadow-green-500/25", border: "border-green-500/30", text: "text-green-400", fill: "bg-green-500/15", line: "bg-green-500" },
-  evaluate: { bg: "bg-amber-500", glow: "shadow-amber-500/25", border: "border-amber-500/30", text: "text-amber-400", fill: "bg-amber-500/15", line: "bg-amber-500" },
-  complete: { bg: "bg-purple-500", glow: "shadow-purple-500/25", border: "border-purple-500/30", text: "text-purple-400", fill: "bg-purple-500/15", line: "bg-purple-500" },
+  explain:  { bg: "bg-focus-teal",  glow: "shadow-focus-teal/10",  border: "border-focus-teal/30",  text: "text-focus-teal",  fill: "bg-focus-teal/10",  line: "bg-focus-teal" },
+  teach:    { bg: "bg-focus-teal",  glow: "shadow-focus-teal/10",  border: "border-focus-teal/30",  text: "text-focus-teal",  fill: "bg-focus-teal/10",  line: "bg-focus-teal" },
+  evaluate: { bg: "bg-focus-amber", glow: "shadow-focus-amber/10", border: "border-focus-amber/30", text: "text-focus-amber", fill: "bg-focus-amber/10", line: "bg-focus-amber" },
+  complete: { bg: "bg-focus-teal",  glow: "shadow-focus-teal/10",  border: "border-focus-teal/30",  text: "text-focus-teal",  fill: "bg-focus-teal/10",  line: "bg-focus-teal" },
 };
 
 export default function PhaseIndicator({ currentPhase, mode }) {

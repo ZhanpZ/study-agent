@@ -63,14 +63,14 @@ export default function ComprehensionPanel({ questions }) {
                   "bg-gray-900/30 border-focus-border text-gray-300 hover:border-focus-border-light cursor-pointer";
                 if (answered) {
                   if (isCorrectOption) {
-                    optionClass = "bg-green-900/25 border-green-600/40 text-green-300";
+                    optionClass = "bg-focus-teal/15 border-focus-teal/40 text-focus-teal";
                   } else if (isSelected && !isCorrect) {
                     optionClass = "bg-red-900/25 border-red-600/40 text-red-300";
                   } else {
                     optionClass = "bg-gray-900/20 border-focus-border text-gray-400";
                   }
                 } else if (isSelected) {
-                  optionClass = "bg-indigo-600/25 border-indigo-500/50 text-white";
+                  optionClass = "bg-focus-teal/20 border-focus-teal/60 text-white";
                 }
 
                 // Animation classes for reveal
@@ -96,7 +96,7 @@ export default function ComprehensionPanel({ questions }) {
               <div
                 className={`mt-2.5 text-xs p-2.5 rounded-lg border ${
                   isCorrect
-                    ? "text-green-300 bg-green-900/15 border-green-800/25"
+                    ? "text-focus-teal bg-focus-teal/10 border-focus-teal/25"
                     : "text-red-300 bg-red-900/15 border-red-800/25"
                 }`}
               >

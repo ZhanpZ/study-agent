@@ -25,7 +25,19 @@ npm run dev        # Dev server at http://localhost:5173
 npm run build      # Production build to frontend/dist/
 ```
 
-No automated tests or linting are configured.
+### Tests
+```bash
+# Backend (pytest + pytest-asyncio, in-memory SQLite, no real OpenAI calls)
+pip install -r requirements-dev.txt
+pytest tests/ -v --cov=backend --cov-report=term-missing
+
+# Frontend (Vitest + Testing Library + jsdom)
+cd frontend
+npm run test         # single run
+npm run test:watch   # watch mode
+```
+
+`pytest.ini` sets `asyncio_mode = auto`; `tests/conftest.py` sets dummy `OPENAI_API_KEY`/`DATABASE_URL` before backend modules import and provides shared fixtures (`db_session`, `sample_concept`, `sample_skill`, `api_client`). `.github/workflows/test.yml` runs both suites plus a frontend production build on every push/PR to `main`/`dev`. No linting is configured.
 
 ## Architecture
 
@@ -34,7 +46,8 @@ No automated tests or linting are configured.
 - `backend/agents/orchestrator.py` — Session state machine managing phases: `explain → explain_done → teach → evaluate → complete`. LeetCode mode skips teach phase
 - `backend/agents/professor.py`, `student.py`, `tester.py` — CrewAI agents for explanation, questioning, and evaluation
 - `backend/agents/quiz_generator.py` — Standalone quiz/drill agents (algorithm quiz, constraint quiz, ML math)
-- `backend/services/` — Skill scoring (weighted moving average), SM-2 spaced repetition scheduling, fuzzy concept deduplication, LeetCode problem fetching
+- `backend/services/` — Skill scoring (weighted moving average), SM-2 spaced repetition scheduling, fuzzy concept deduplication, LeetCode problem fetching, LLM call guarding
+- `backend/services/llm_guard.py` — Centralized timeout, retry-with-backoff, and circuit-breaker wrapper around every CrewAI `agent.execute_task()` call; call sites use `call_agent_task()` instead of calling `execute_task()` directly
 - `backend/config.py` — LLM model selection and tuning constants (temperature, thresholds, scoring weights)
 - `backend/models/` — SQLAlchemy ORM tables, Pydantic schemas, async database setup (aiosqlite)
 
@@ -47,7 +60,7 @@ No automated tests or linting are configured.
 
 ## Key Patterns
 
-- **Agent pattern**: CrewAI `Agent` + `Task` → `agent.execute_task(task)`. Agents return JSON parsed into domain models
+- **Agent pattern**: CrewAI `Agent` + `Task`, executed via `backend/services/llm_guard.call_agent_task()` (timeout + retry + circuit breaker) rather than calling `agent.execute_task()` directly. Agents return JSON parsed into domain models
 - **All database operations are async** (SQLAlchemy 2 + aiosqlite). Use `async with get_db()` / FastAPI `Depends(get_db)`
 - **WebSocket message types**: `message`, `phase_change`, `mcq`, `code_challenge`, `score_update`, `summary`, `comprehension_mcqs` (server→client); `ready_to_teach`, `mcq_answers`, `code_answer` (client→server)
 - **Skill scoring**: `new_score = old_score * 0.3 + eval_score * 0.7`, confidence increments by 10 per evaluation (max 100)
@@ -57,7 +70,7 @@ No automated tests or linting are configured.
 
 ## Environment
 
-Requires `.env` in project root with `OPENAI_API_KEY` and `DATABASE_URL` (defaults to `sqlite+aiosqlite:///./study.db`). Database auto-creates on first startup.
+Requires `.env` in `backend/` with `OPENAI_API_KEY` and `DATABASE_URL` (defaults to `sqlite+aiosqlite:///./study.db`). Database auto-creates on first startup.
 
 ## Change Log & Diary
 - After completing any significant task or code change, you MUST append a brief entry to `DIARY.md`.

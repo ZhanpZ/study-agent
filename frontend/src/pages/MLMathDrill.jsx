@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
+import GeneratingLoader from "../components/GeneratingLoader";
 
 const TOPICS = [
   { value: "all", label: "All Topics" },
@@ -18,10 +19,10 @@ const TOPICS = [
 ];
 
 const STEPS = [
-  { key: "learn", label: "Learn", color: "bg-amber-500" },
-  { key: "math", label: "Math", color: "bg-violet-500" },
-  { key: "proof", label: "Proof", color: "bg-blue-500" },
-  { key: "application", label: "ML Application", color: "bg-emerald-500" },
+  { key: "learn", label: "Learn", color: "bg-focus-teal" },
+  { key: "math", label: "Math", color: "bg-focus-teal" },
+  { key: "proof", label: "Proof", color: "bg-focus-teal" },
+  { key: "application", label: "ML Application", color: "bg-focus-teal" },
 ];
 
 /* ─── Shared Markdown renderer with LaTeX support ──── */
@@ -32,7 +33,7 @@ function MathText({ children, className = "" }) {
     <div className={`prose prose-invert prose-sm max-w-none
                      prose-headings:text-gray-100 prose-p:my-1.5 prose-li:my-0
                      prose-ul:my-1 prose-ol:my-1
-                     prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
+                     prose-code:text-focus-teal prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
                      prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700
                      prose-strong:text-gray-100 ${className}`}>
       <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
@@ -136,7 +137,7 @@ export default function MLMathDrill() {
             onClick={() => setTopic(t.value)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
               topic === t.value
-                ? "bg-violet-600 border-violet-500 text-white"
+                ? "bg-focus-teal border-focus-teal/80 text-white"
                 : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
             }`}
           >
@@ -152,12 +153,12 @@ export default function MLMathDrill() {
             Questions: <span className="text-white font-bold">{stats.total}</span>
           </span>
           <span className="text-gray-400">
-            Math: <span className="text-violet-400 font-bold">
+            Math: <span className="text-focus-teal font-bold">
               {stats.mathCorrect}/{stats.total} ({Math.round((stats.mathCorrect / stats.total) * 100)}%)
             </span>
           </span>
           <span className="text-gray-400">
-            Proof: <span className="text-blue-400 font-bold">
+            Proof: <span className="text-focus-teal font-bold">
               {stats.proofCorrect}/{stats.total} ({Math.round((stats.proofCorrect / stats.total) * 100)}%)
             </span>
           </span>
@@ -169,11 +170,32 @@ export default function MLMathDrill() {
         <button
           onClick={fetchQuestion}
           disabled={loading}
-          className="px-6 py-3 bg-violet-600 text-white font-medium rounded-lg
-                     hover:bg-violet-500 disabled:opacity-50 transition-colors mb-8"
+          className="px-6 py-3 bg-focus-teal text-white font-medium rounded-lg
+                     hover:bg-focus-teal-light disabled:opacity-50 transition-colors mb-4
+                     flex items-center gap-2"
         >
-          {loading ? "Generating..." : question ? "Next Question" : "Start Drill"}
+          {loading && (
+            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+          {loading ? "Generating…" : question ? "Next Question" : "Start Drill"}
         </button>
+      )}
+
+      {loading && (
+        <GeneratingLoader
+          accentColor="teal"
+          messages={[
+            "Selecting a concept…",
+            "Writing the math question…",
+            "Crafting the proof step…",
+            "Adding ML application context…",
+            "Almost ready…",
+          ]}
+          note="AI generation typically takes 15–30 seconds"
+        />
       )}
 
       {question && (
@@ -203,7 +225,7 @@ export default function MLMathDrill() {
 
           {/* Topic badge */}
           {question.topic && (
-            <span className="inline-block px-2 py-0.5 mb-4 bg-violet-600/20 border border-violet-600/40 rounded text-xs text-violet-300 font-medium">
+            <span className="inline-block px-2 py-0.5 mb-4 bg-focus-teal/10 border border-focus-teal/30 rounded text-xs text-focus-teal font-medium">
               {question.topic}
             </span>
           )}
@@ -219,7 +241,7 @@ export default function MLMathDrill() {
               <p className="text-sm text-gray-400">No concept explanation available for this question.</p>
               <button
                 onClick={goToMath}
-                className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-500 transition-colors"
+                className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
               >
                 Skip to Math Question →
               </button>
@@ -267,7 +289,7 @@ export default function MLMathDrill() {
 function LearnStep({ concept, onNext }) {
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-5">
-      <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wide">
+      <h3 className="text-sm font-semibold text-focus-teal uppercase tracking-wide">
         Concept Explanation
       </h3>
 
@@ -283,8 +305,8 @@ function LearnStep({ concept, onNext }) {
       {concept.analogy && (
         <div className="space-y-1">
           <span className="text-xs text-gray-400 uppercase font-medium">Intuition / Analogy</span>
-          <div className="bg-amber-900/15 rounded-lg p-4 border border-amber-700/30">
-            <MathText className="text-amber-200/90">{concept.analogy}</MathText>
+          <div className="bg-focus-surface rounded-lg p-4 border border-focus-border">
+            <MathText className="text-focus-text-muted">{concept.analogy}</MathText>
           </div>
         </div>
       )}
@@ -292,8 +314,8 @@ function LearnStep({ concept, onNext }) {
       {/* Simple example */}
       {concept.simple_example && (
         <div className="space-y-1">
-          <span className="text-xs text-emerald-400 uppercase font-medium">Simple Example</span>
-          <div className="bg-emerald-900/15 rounded-lg p-4 border border-emerald-700/30">
+          <span className="text-xs text-focus-teal uppercase font-medium">Simple Example</span>
+          <div className="bg-focus-teal/5 rounded-lg p-4 border border-focus-teal/15">
             <MathText className="text-gray-200">{concept.simple_example}</MathText>
           </div>
         </div>
@@ -302,8 +324,8 @@ function LearnStep({ concept, onNext }) {
       {/* Harder example */}
       {concept.harder_example && (
         <div className="space-y-1">
-          <span className="text-xs text-orange-400 uppercase font-medium">Harder Example</span>
-          <div className="bg-orange-900/15 rounded-lg p-4 border border-orange-700/30">
+          <span className="text-xs text-focus-amber uppercase font-medium">Harder Example</span>
+          <div className="bg-focus-amber/5 rounded-lg p-4 border border-focus-amber/15">
             <MathText className="text-gray-200">{concept.harder_example}</MathText>
           </div>
         </div>
@@ -311,7 +333,7 @@ function LearnStep({ concept, onNext }) {
 
       <button
         onClick={onNext}
-        className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-500 transition-colors"
+        className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
       >
         Ready — Show Me the Question →
       </button>
@@ -325,7 +347,7 @@ function MathStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast }) 
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-violet-400 uppercase tracking-wide">Math Problem</h3>
+        <h3 className="text-sm font-semibold text-focus-teal uppercase tracking-wide">Math Problem</h3>
         {revealed && <ReportButton quizType="ml_math" questionData={{ part: "math", ...q }} addToast={addToast} />}
       </div>
       <MathText>{q.question}</MathText>
@@ -341,7 +363,7 @@ function MathStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast }) 
       {answer && !revealed && (
         <button
           onClick={onCheck}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 transition-colors"
+          className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
         >
           Check Answer
         </button>
@@ -351,7 +373,7 @@ function MathStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast }) 
         <>
           <div className={`text-sm p-3 rounded-lg ${
             answer === q.correct
-              ? "bg-green-900/20 text-green-400 border border-green-700/50"
+              ? "bg-focus-teal/10 text-focus-teal border border-focus-teal/25"
               : "bg-red-900/20 text-red-400 border border-red-700/50"
           }`}>
             <span className="font-medium">{answer === q.correct ? "Correct!" : "Incorrect."}</span>
@@ -363,7 +385,7 @@ function MathStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast }) 
           </div>
           <button
             onClick={onNext}
-            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 transition-colors"
+            className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
           >
             Continue to Proof →
           </button>
@@ -379,7 +401,7 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast })
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wide">Proof Insertion</h3>
+        <h3 className="text-sm font-semibold text-focus-teal uppercase tracking-wide">Proof Insertion</h3>
         {revealed && <ReportButton quizType="ml_math" questionData={{ part: "proof", ...q }} addToast={addToast} />}
       </div>
       <MathText>{q.question}</MathText>
@@ -402,7 +424,7 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast })
       {answer && !revealed && (
         <button
           onClick={onCheck}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 transition-colors"
+          className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
         >
           Check Answer
         </button>
@@ -412,7 +434,7 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast })
         <>
           <div className={`text-sm p-3 rounded-lg ${
             answer === q.correct
-              ? "bg-green-900/20 text-green-400 border border-green-700/50"
+              ? "bg-focus-teal/10 text-focus-teal border border-focus-teal/25"
               : "bg-red-900/20 text-red-400 border border-red-700/50"
           }`}>
             <span className="font-medium">{answer === q.correct ? "Correct!" : "Incorrect."}</span>
@@ -424,7 +446,7 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast })
           </div>
           <button
             onClick={onNext}
-            className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-500 transition-colors"
+            className="px-4 py-2 bg-focus-teal text-white text-sm rounded-lg hover:bg-focus-teal-light transition-colors"
           >
             See ML Application →
           </button>
@@ -439,9 +461,9 @@ function ProofStep({ q, answer, revealed, onSelect, onCheck, onNext, addToast })
 function ApplicationStep({ app }) {
   return (
     <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-4">
-      <h3 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide">ML Application</h3>
+      <h3 className="text-sm font-semibold text-focus-teal uppercase tracking-wide">ML Application</h3>
 
-      <div className="bg-emerald-900/20 border border-emerald-700/50 rounded-lg p-4 space-y-3">
+      <div className="bg-focus-teal/5 border border-focus-teal/20 rounded-lg p-4 space-y-3">
         <div>
           <span className="text-xs text-gray-400 uppercase">Algorithm</span>
           <p className="text-lg font-semibold text-white">{app.algorithm}</p>
@@ -486,11 +508,11 @@ function MCOptions({ options, correct, answer, revealed, onSelect }) {
 
         let cls = "bg-gray-900/40 border-gray-700 text-gray-300 hover:border-gray-500 cursor-pointer";
         if (revealed) {
-          if (isCorrect) cls = "bg-green-900/30 border-green-600 text-green-300";
+          if (isCorrect) cls = "bg-focus-teal/15 border-focus-teal/50 text-focus-teal";
           else if (isSelected) cls = "bg-red-900/30 border-red-600 text-red-300";
           else cls = "bg-gray-900/40 border-gray-700 text-gray-400";
         } else if (isSelected) {
-          cls = "bg-indigo-600/30 border-indigo-500 text-white";
+          cls = "bg-focus-teal/20 border-focus-teal/60 text-white";
         }
 
         return (

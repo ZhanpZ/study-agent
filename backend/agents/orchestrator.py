@@ -33,6 +33,25 @@ class SessionState:
     pending_gaps: list[str] = field(default_factory=list)  # gaps from last eval to target next teach round
 
 
+def should_force_evaluate(state: SessionState) -> bool:
+    """True once teach_rounds hits the hard cap, or the normal periodic-eval cadence is due.
+
+    Shared by orchestrator._handle_teach and main.py's WebSocket loop (which re-implements
+    the teach-round-counting logic inline to support streaming) so the two copies can't
+    drift on this specific check.
+    """
+    if state.teach_rounds >= state.max_teach_rounds:
+        return True
+    return (state.teach_rounds >= MIN_TEACH_BEFORE_EVAL
+            and (state.teach_rounds - MIN_TEACH_BEFORE_EVAL) % EVAL_EVERY_N_ROUNDS == 0)
+
+
+def should_force_complete(state: SessionState) -> bool:
+    """True when the session has exhausted its teach-round budget and still isn't mastered —
+    prevents an unbounded TEACH<->EVALUATE cycle for a user whose score never crosses threshold."""
+    return state.teach_rounds >= state.max_teach_rounds
+
+
 _professor_agent: "Agent | None" = None
 _student_agent: "Agent | None" = None
 _tester_agent: "Agent | None" = None
@@ -180,9 +199,8 @@ class Orchestrator:
         })
         state.teach_rounds += 1
 
-        # After enough teaching rounds, periodically move to evaluation
-        if (state.teach_rounds >= MIN_TEACH_BEFORE_EVAL
-                and (state.teach_rounds - MIN_TEACH_BEFORE_EVAL) % EVAL_EVERY_N_ROUNDS == 0):
+        # After enough teaching rounds (or the hard round cap), move to evaluation
+        if should_force_evaluate(state):
             state.phase = Phase.EVALUATE
             return self._handle_evaluate(state)
 
@@ -286,6 +304,14 @@ class Orchestrator:
             feedback += (
                 "Session complete! Review the gaps above and practice similar problems "
                 "to strengthen your understanding."
+            )
+        elif should_force_complete(state):
+            # Hit the teach-round cap without mastering it — stop cycling and hand off
+            # to spaced repetition instead of looping TEACH<->EVALUATE indefinitely.
+            state.phase = Phase.COMPLETE
+            feedback += (
+                "Max practice rounds reached for this session. This concept has been "
+                "added to your review queue — you'll revisit it via spaced repetition."
             )
         else:
             state.phase = Phase.TEACH

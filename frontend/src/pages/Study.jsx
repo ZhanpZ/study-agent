@@ -65,7 +65,7 @@ export default function Study() {
 
   const {
     messages, phase, score, gaps, connected,
-    mcqQuestions, codeChallenge, summary, comprehensionMcqs,
+    mcqQuestions, mcqSubmittedAnswers, codeChallenge, summary, comprehensionMcqs,
     thinking, connectionStatus, phaseTransition,
     sendMessage, sendReadyToTeach, sendMCQAnswers, sendCodeAnswer,
   } = useWebSocket(sessionId, initialMessages);
@@ -271,6 +271,7 @@ export default function Study() {
         connected={connected}
         mode={activeMode}
         mcqQuestions={mcqQuestions}
+        mcqSubmittedAnswers={mcqSubmittedAnswers}
         codeChallenge={codeChallenge}
         summary={summary}
         comprehensionMcqs={comprehensionMcqs}

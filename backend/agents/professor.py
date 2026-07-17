@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from backend.config import MODEL_PROFESSOR
+from backend.services.llm_guard import call_agent_task
 
 
 def create_professor_agent() -> Agent:
@@ -87,8 +88,7 @@ def explain_concept(
         expected_output=expected,
         agent=agent,
     )
-    result = agent.execute_task(task)
-    return str(result)
+    return call_agent_task(agent, task)
 
 
 def answer_followup(
@@ -119,7 +119,7 @@ def answer_followup(
         expected_output="Direct answer to the follow-up question.",
         agent=agent,
     )
-    return str(agent.execute_task(task))
+    return call_agent_task(agent, task)
 
 
 def generate_summary(
@@ -155,9 +155,10 @@ def generate_summary(
             f"{history_text}\n\n"
             f"Format as markdown. {format_instruction}\n"
             "Use bullet points, headers, code blocks. "
-            "Under 500 words. No filler — only key takeaways."
+            "Under 500 words. No filler — only key takeaways. "
+            "Output raw markdown directly — do NOT wrap the entire response in a code fence."
         ),
         expected_output="Concise markdown study notes.",
         agent=agent,
     )
-    return str(agent.execute_task(task))
+    return call_agent_task(agent, task)

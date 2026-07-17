@@ -39,7 +39,7 @@ export function LanguageSelector({ language, onChange, className = "" }) {
       value={language}
       onChange={(e) => onChange(e.target.value)}
       className={`bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1
-                  focus:outline-none focus:border-indigo-500 cursor-pointer transition-colors ${className}`}
+                  focus:outline-none focus:border-focus-teal cursor-pointer transition-colors ${className}`}
     >
       {LANGUAGES.map((l) => (
         <option key={l.value} value={l.value}>{l.label}</option>

@@ -4,10 +4,11 @@ import datetime
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +16,9 @@ from backend.models.database import init_db, get_db
 from backend.models.tables import Concept, SkillScore, ReviewSchedule, Session, Message, QuizHistory, QuizFeedback, StudyGoal
 from backend.models.schemas import (
     SessionStart, SessionResponse, SkillResponse, ReviewDue, StatsResponse, WSMessage,
-    ConceptMerge, QuizHistorySave, QuizFeedbackCreate, NoteCleanRequest,
+    ConceptMerge, QuizHistorySave, QuizFeedbackCreate, NoteCleanRequest, DsaTemplateEvaluateRequest,
 )
-from backend.agents.orchestrator import Orchestrator, Phase
+from backend.agents.orchestrator import Orchestrator, Phase, should_force_evaluate
 from backend.agents.professor import generate_summary
 from backend.agents.tester import generate_comprehension_mcqs
 from backend.agents.quiz_generator import (
@@ -34,7 +35,7 @@ from backend.services.skill_tracker import (
     get_or_create_skill, update_skill, get_all_skills, get_stats,
 )
 from backend.services.concept_matcher import find_matching_concept
-from backend.config import QUIZ_HISTORY_DEFAULT_LIMIT, QUIZ_HISTORY_MAX_LIMIT, MIN_TEACH_BEFORE_EVAL, EVAL_EVERY_N_ROUNDS
+from backend.config import QUIZ_HISTORY_DEFAULT_LIMIT, QUIZ_HISTORY_MAX_LIMIT
 
 
 @asynccontextmanager
@@ -217,6 +218,7 @@ async def merge_concepts(body: ConceptMerge, db: AsyncSession = Depends(get_db))
     if source_review:
         await db.delete(source_review)
 
+    await db.flush()
     await db.delete(source)
     await db.commit()
 
@@ -224,10 +226,10 @@ async def merge_concepts(body: ConceptMerge, db: AsyncSession = Depends(get_db))
 
 
 @app.post("/api/concepts/deduplicate")
-async def deduplicate(db: AsyncSession = Depends(get_db)):
-    """Manually merge duplicate concepts (previously ran on every startup)."""
+async def deduplicate(semantic: bool = True, db: AsyncSession = Depends(get_db)):
+    """Manually merge duplicate concepts using syntactic + semantic (embedding) similarity."""
     from backend.services.concept_matcher import deduplicate_concepts
-    merged = await deduplicate_concepts(db)
+    merged = await deduplicate_concepts(db, semantic=semantic)
     return {"status": "ok", "merged_count": merged}
 
 
@@ -318,11 +320,14 @@ async def get_goals_today(db: AsyncSession = Depends(get_db)):
         goal.streak_days = streak
     await db.commit()
 
+    active_session = any(s.ended_at is None for s in today_sessions)
+
     return {
         "date": today,
         "target_minutes": goal.target_minutes,
-        "actual_minutes": round(actual_minutes, 1),
+        "actual_minutes": actual_minutes,
         "streak_days": streak,
+        "active_session": active_session,
     }
 
 
@@ -335,11 +340,13 @@ async def get_recommendations(limit: int = 5, db: AsyncSession = Depends(get_db)
 
 
 @app.get("/api/algorithm-quiz")
-async def get_algorithm_quiz(count: int = 5, focus: str | None = None):
+async def get_algorithm_quiz(count: int = 5, focus: str | None = Query(None, max_length=200)):
     """Generate algorithm selection quiz questions, optionally biased toward weak algorithms."""
     agent = create_quiz_agent()
     bias = [a.strip() for a in focus.split(",")] if focus else None
-    questions = generate_algorithm_quiz(agent, num_questions=min(count, 10), bias_toward=bias)
+    questions = await asyncio.to_thread(
+        generate_algorithm_quiz, agent, min(count, 10), bias
+    )
     return {"questions": questions}
 
 
@@ -347,15 +354,17 @@ async def get_algorithm_quiz(count: int = 5, focus: str | None = None):
 async def get_constraint_quiz(count: int = 5):
     """Generate keyword + constraint → algorithm matching questions (select all that apply)."""
     agent = create_quiz_agent()
-    questions = generate_constraint_quiz(agent, num_questions=min(count, 10))
+    questions = await asyncio.to_thread(
+        generate_constraint_quiz, agent, min(count, 10)
+    )
     return {"questions": questions}
 
 
 @app.get("/api/ml-math")
-async def get_ml_math_question(topic: str = "all"):
+async def get_ml_math_question(topic: str = Query("all", max_length=200)):
     """Generate a single ML math drill question (math MC + proof MC + ML application)."""
     agent = create_ml_math_agent()
-    question = generate_ml_math_question(agent, topic=topic)
+    question = await asyncio.to_thread(generate_ml_math_question, agent, topic)
     return {"question": question}
 
 
@@ -382,19 +391,17 @@ async def get_dsa_template(template_id: str):
 
 
 @app.post("/api/dsa-templates/evaluate")
-async def evaluate_dsa_template(body: dict):
+async def evaluate_dsa_template(body: DsaTemplateEvaluateRequest):
     """Evaluate user's DSA template implementation."""
-    template_id = body.get("template_id")
-    user_code = body.get("code", "")
-    if not template_id or not user_code.strip():
-        raise HTTPException(status_code=400, detail="template_id and code required")
+    template_id = body.template_id
+    user_code = body.code
 
     template = get_template_by_id(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
     agent = create_template_eval_agent()
-    evaluation = evaluate_template(agent, template, user_code)
+    evaluation = await asyncio.to_thread(evaluate_template, agent, template, user_code)
 
     # Include reference implementation in response (shown after evaluation)
     evaluation["reference_implementation"] = template["reference_implementation"]
@@ -411,7 +418,7 @@ async def clean_and_save_note(body: NoteCleanRequest, db: AsyncSession = Depends
     """Clean up messy notes using AI, save as a concept for spaced repetition review."""
     # Clean the note via AI agent
     agent = create_note_cleaner_agent()
-    result = clean_note(agent, body.raw_text)
+    result = await asyncio.to_thread(clean_note, agent, body.raw_text)
     topic = result["topic"]
     cleaned_note = result["cleaned_note"]
 
@@ -470,6 +477,17 @@ async def delete_quiz_history(entry_id: int, db: AsyncSession = Depends(get_db))
     await db.delete(entry)
     await db.commit()
     return {"status": "deleted", "id": entry_id}
+
+
+@app.delete("/api/quiz-history")
+async def delete_quiz_history_bulk(quiz_type: str | None = None, db: AsyncSession = Depends(get_db)):
+    """Bulk delete quiz history, optionally filtered by quiz_type."""
+    query = delete(QuizHistory)
+    if quiz_type:
+        query = query.where(QuizHistory.quiz_type == quiz_type)
+    await db.execute(query)
+    await db.commit()
+    return {"status": "deleted"}
 
 
 @app.delete("/api/concepts/{concept_id}")
@@ -568,6 +586,18 @@ async def delete_quiz_feedback(entry_id: int, db: AsyncSession = Depends(get_db)
     return {"status": "deleted", "id": entry_id}
 
 
+async def _persist_phase_on_exit(db: AsyncSession, session_id: int, state) -> None:
+    """Best-effort persistence of the session's current phase when the WS loop exits,
+    whether from a clean disconnect or an unhandled exception."""
+    try:
+        session_record = await db.get(Session, session_id)
+        if session_record:
+            session_record.phase = state.phase.value
+            await db.commit()
+    except Exception as e:
+        logger.error("Failed to save session %d phase on exit: %s", session_id, e)
+
+
 async def _stamp_phase(db: AsyncSession, session_id: int, phase: str) -> None:
     """Record a phase transition timestamp on the Session row."""
     record = await db.get(Session, session_id)
@@ -662,8 +692,8 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                 })
 
                 # Generate comprehension MCQs based on the explanation
-                comprehension_mcqs = generate_comprehension_mcqs(
-                    orchestrator.tester, state.topic, response,
+                comprehension_mcqs = await asyncio.to_thread(
+                    generate_comprehension_mcqs, orchestrator.tester, state.topic, response,
                 )
                 if comprehension_mcqs:
                     await websocket.send_json({
@@ -676,7 +706,18 @@ async def websocket_session(websocket: WebSocket, session_id: int):
             # Main message loop
             while True:
                 data = await websocket.receive_text()
-                msg = json.loads(data)
+                try:
+                    msg = json.loads(data)
+                except json.JSONDecodeError:
+                    await websocket.send_json({"type": "error", "content": "Invalid JSON message"})
+                    continue
+
+                try:
+                    WSMessage.model_validate(msg)
+                except ValidationError as e:
+                    logger.warning("Rejected malformed WS message for session %d: %s", session_id, e)
+                    await websocket.send_json({"type": "error", "content": "Invalid message format"})
+                    continue
 
                 # Heartbeat: respond to pings immediately
                 if msg.get("type") == "ping":
@@ -688,7 +729,9 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     if state.phase == Phase.EXPLAIN_DONE:
                         # Leetcode mode skips teach → goes straight to code challenge
                         if state.mode == "leetcode":
-                            response, agent_name, state = orchestrator.transition_to_evaluate(state)
+                            response, agent_name, state = await asyncio.to_thread(
+                                orchestrator.transition_to_evaluate, state
+                            )
                             active_sessions[session_id] = (orchestrator, state)
 
                             if response == "__CODE_CHALLENGE__":
@@ -767,8 +810,8 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     # User submitted code
                     code = msg.get("code", "")
                     language = msg.get("language", "python")
-                    response, agent_name, state = orchestrator.process_code_answer(
-                        state, code, language=language
+                    response, agent_name, state = await asyncio.to_thread(
+                        orchestrator.process_code_answer, state, code, language=language
                     )
                     active_sessions[session_id] = (orchestrator, state)
 
@@ -790,7 +833,10 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                     )
 
                 elif msg.get("type") == "message":
-                    user_content = msg["content"]
+                    user_content = msg.get("content")
+                    if not user_content:
+                        await websocket.send_json({"type": "error", "content": "content is required for message type"})
+                        continue
 
                     # Save user message first
                     db.add(Message(
@@ -824,8 +870,8 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         await websocket.send_json({
                             "type": "phase_change", "phase": "explain_done",
                         })
-                        followup_mcqs = generate_comprehension_mcqs(
-                            orchestrator.tester, state.topic, response,
+                        followup_mcqs = await asyncio.to_thread(
+                            generate_comprehension_mcqs, orchestrator.tester, state.topic, response,
                         )
                         if followup_mcqs:
                             await websocket.send_json({
@@ -840,11 +886,12 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         })
                         state.teach_rounds += 1
 
-                        # Check if it's time for evaluation
-                        if (state.teach_rounds >= MIN_TEACH_BEFORE_EVAL
-                                and (state.teach_rounds - MIN_TEACH_BEFORE_EVAL) % EVAL_EVERY_N_ROUNDS == 0):
+                        # Check if it's time for evaluation (or the hard round cap is hit)
+                        if should_force_evaluate(state):
                             state.phase = Phase.EVALUATE
-                            response, agent_name, state = orchestrator._handle_evaluate(state)
+                            response, agent_name, state = await asyncio.to_thread(
+                                orchestrator._handle_evaluate, state
+                            )
                             active_sessions[session_id] = (orchestrator, state)
 
                             if response == "__MCQ__":
@@ -868,7 +915,7 @@ async def websocket_session(websocket: WebSocket, session_id: int):
 
                         # Detect errors and build student prompt (streamed)
                         from backend.agents.tester import detect_critical_errors as _det
-                        critical_errors = _det(state.topic, user_content)
+                        critical_errors = await asyncio.to_thread(_det, state.topic, user_content)
                         student_prompt = build_student_prompt(
                             state.topic, user_content, state.conversation_history,
                             state.skill_level, mode=state.mode,
@@ -895,8 +942,8 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         continue
 
                     # Fallback: process through orchestrator for other phases
-                    response, agent_name, state = orchestrator.process_message(
-                        state, user_content
+                    response, agent_name, state = await asyncio.to_thread(
+                        orchestrator.process_message, state, user_content
                     )
                     active_sessions[session_id] = (orchestrator, state)
 
@@ -938,16 +985,22 @@ async def websocket_session(websocket: WebSocket, session_id: int):
                         )
 
         except WebSocketDisconnect:
-            # Clean up on disconnect — always remove from active_sessions
+            await _persist_phase_on_exit(db, session_id, state)
+        except Exception as e:
+            # Any other failure (e.g. an LLM call that exhausted retries) must not
+            # leak the session from active_sessions or skip phase persistence —
+            # only WebSocketDisconnect was handled here previously.
+            logger.error("Unhandled error in WS session %d: %s", session_id, e, exc_info=True)
             try:
-                session_record = await db.get(Session, session_id)
-                if session_record:
-                    session_record.phase = state.phase.value
-                    await db.commit()
-            except Exception as e:
-                logger.error("Failed to save session %d on disconnect: %s", session_id, e)
-            finally:
-                active_sessions.pop(session_id, None)
+                await websocket.send_json({
+                    "type": "error",
+                    "content": "Something went wrong on our end — please refresh and try again.",
+                })
+            except Exception:
+                pass  # socket may already be closed/broken
+            await _persist_phase_on_exit(db, session_id, state)
+        finally:
+            active_sessions.pop(session_id, None)
 
 
 async def _update_summary(
@@ -958,7 +1011,8 @@ async def _update_summary(
     state,
 ):
     """Regenerate and persist the session summary, then send to client."""
-    summary = generate_summary(
+    summary = await asyncio.to_thread(
+        generate_summary,
         orchestrator.professor,
         state.topic,
         state.conversation_history,

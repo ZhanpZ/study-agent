@@ -7,7 +7,9 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key-not-used")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 
 import pytest_asyncio
+import httpx
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import StaticPool
 from backend.models.database import Base
 from backend.models.tables import Concept, SkillScore
 
@@ -46,3 +48,41 @@ async def sample_skill(db_session, sample_concept):
     await db_session.commit()
     await db_session.refresh(skill)
     return skill
+
+
+@pytest_asyncio.fixture
+async def api_client():
+    """Provide an httpx AsyncClient wired to the FastAPI app, backed by an
+    isolated in-memory DB (shared across requests via StaticPool) and with
+    active_sessions cleared so tests don't leak in-process session state."""
+    from backend.main import app, active_sessions
+    from backend.models.database import get_db
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        echo=False,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _override_get_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    active_sessions.clear()
+
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        active_sessions.clear()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()

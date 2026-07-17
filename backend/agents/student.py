@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from backend.config import MODEL_FAST
+from backend.services.llm_guard import call_agent_task
 
 
 def create_student_agent() -> Agent:
@@ -90,5 +91,4 @@ def ask_questions(
         expected_output="1-2 sharp questions targeting weak points in the explanation.",
         agent=agent,
     )
-    result = agent.execute_task(task)
-    return str(result)
+    return call_agent_task(agent, task)

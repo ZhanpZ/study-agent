@@ -20,8 +20,8 @@ export default function CodeChallengePanel({
       <div className="px-5 py-4 border-b border-focus-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center border border-amber-500/25">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+            <div className="w-7 h-7 rounded-lg bg-focus-teal/10 flex items-center justify-center border border-focus-teal/25">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-focus-teal">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
               </svg>
             </div>
@@ -31,9 +31,9 @@ export default function CodeChallengePanel({
             {challenge.difficulty && (
               <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium border ${
                 challenge.difficulty === "Easy"
-                  ? "bg-green-500/15 text-green-400 border-green-500/25"
+                  ? "bg-focus-teal/10 text-focus-teal border-focus-teal/25"
                   : challenge.difficulty === "Medium"
-                  ? "bg-amber-500/15 text-amber-400 border-amber-500/25"
+                  ? "bg-focus-amber/10 text-focus-amber border-focus-amber/25"
                   : "bg-red-500/15 text-red-400 border-red-500/25"
               }`}>
                 {challenge.difficulty}
@@ -58,7 +58,7 @@ export default function CodeChallengePanel({
         <div className="text-sm text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none
                         prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
                         prose-p:my-1.5 prose-li:my-0 prose-ul:my-1.5
-                        prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+                        prose-code:text-focus-teal prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
                         prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
                         prose-strong:text-gray-100 max-h-80 overflow-y-auto">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
@@ -70,7 +70,7 @@ export default function CodeChallengePanel({
           <div className="mt-3">
             <button
               onClick={() => setShowHints(!showHints)}
-              className="flex items-center gap-1.5 text-xs text-focus-amber hover:text-focus-amber-light transition-colors"
+              className="flex items-center gap-1.5 text-xs text-focus-text-muted hover:text-focus-amber transition-colors"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
@@ -83,8 +83,8 @@ export default function CodeChallengePanel({
             {showHints && (
               <div className="mt-2 space-y-1.5">
                 {challenge.hints.map((hint, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs text-amber-300/80 bg-amber-900/15 rounded-lg px-3 py-2 border border-amber-800/20">
-                    <span className="text-amber-500 font-mono shrink-0">{i + 1}.</span>
+                  <div key={i} className="flex items-start gap-2 text-xs text-focus-text-muted bg-focus-surface rounded-lg px-3 py-2 border border-focus-border">
+                    <span className="text-focus-text-dim font-mono shrink-0">{i + 1}.</span>
                     <span>{hint}</span>
                   </div>
                 ))}
@@ -100,9 +100,9 @@ export default function CodeChallengePanel({
         <div className="flex items-center justify-between px-4 py-2 bg-gray-900/80 border-b border-gray-800">
           <div className="flex items-center gap-3">
             <div className="flex gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500/60"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500/60"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-focus-border"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-focus-border"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-focus-border"></span>
             </div>
             <span className="text-[11px] text-gray-400 font-mono">{filename}</span>
           </div>
@@ -137,9 +137,9 @@ export default function CodeChallengePanel({
         <button
           onClick={() => onSubmit(language)}
           disabled={!codeInput.trim() || submitting}
-          className="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg
-                     hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed
-                     transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2
+          className="px-6 py-2 bg-focus-teal text-white text-sm font-medium rounded-lg
+                     hover:bg-focus-teal-light disabled:opacity-40 disabled:cursor-not-allowed
+                     transition-all shadow-lg shadow-focus-teal/10 flex items-center gap-2
                      btn-interactive btn-ripple"
         >
           {submitting ? (

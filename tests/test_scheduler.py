@@ -127,7 +127,9 @@ class TestGetDueReviews:
         assert due[0]["concept_name"] == "binary search"
 
     @pytest.mark.asyncio
-    async def test_excludes_future(self, db_session, sample_concept):
+    async def test_future_review_marked_upcoming(self, db_session, sample_concept):
+        # get_due_reviews returns ALL concepts with a status field (the frontend
+        # filters into due/new/upcoming sections) rather than excluding future ones.
         schedule = ReviewSchedule(
             concept_id=sample_concept.id,
             easiness_factor=2.5,
@@ -140,4 +142,11 @@ class TestGetDueReviews:
         await db_session.commit()
 
         due = await get_due_reviews(db_session)
-        assert len(due) == 0
+        assert len(due) == 1
+        assert due[0]["status"] == "upcoming"
+
+    @pytest.mark.asyncio
+    async def test_new_concept_without_schedule_marked_new(self, db_session, sample_concept):
+        due = await get_due_reviews(db_session)
+        assert len(due) == 1
+        assert due[0]["status"] == "new"

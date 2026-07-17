@@ -46,9 +46,19 @@ class TestSimilarity:
     def test_instructional_prefix_ignored(self):
         assert similarity("binary search", "explain binary search") == 1.0
 
-    def test_substring_containment_bonus(self):
+    def test_substring_containment_bonus_applies_above_threshold(self):
+        # "binary search" (13 chars) covers 13/16 = 81.25% of "binary searching",
+        # clearing the 0.75 coverage threshold, so the containment bonus applies
+        # and the score equals the coverage ratio exactly.
+        score = similarity("binary search", "binary searching")
+        assert score == pytest.approx(13 / 16)
+
+    def test_substring_containment_no_bonus_below_threshold(self):
+        # "binary search" (13 chars) covers only 13/19 = 68% of "binary search tree",
+        # below the 0.75 threshold, so it falls back to fuzzy ratio (not the
+        # coverage bonus) — still fairly similar, but capped below 0.85.
         score = similarity("binary search", "binary search tree")
-        assert score >= 0.85
+        assert 0.7 <= score < 0.85
 
     def test_unrelated_topics_low_score(self):
         score = similarity("binary search", "neural networks")

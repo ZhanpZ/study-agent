@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import ConceptDetail from "../components/ConceptDetail";
 import { ACTIVITY_TYPE } from "../constants/modeConfig";
@@ -10,14 +10,47 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [quizHistory, setQuizHistory] = useState([]);
   const [reviewsDue, setReviewsDue] = useState([]);
-  const [todayGoal, setTodayGoal] = useState(null);
-  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedConcept, setSelectedConcept] = useState(null);
+  const [deletingConcepts, setDeletingConcepts] = useState(new Set());
+  const [deletingEntries, setDeletingEntries] = useState(new Set());
+  const [resettingHistory, setResettingHistory] = useState(false);
+  const [mergingConcepts, setMergingConcepts] = useState(false);
   const { addToast } = useToast();
-  const navigate = useNavigate();
+
+  const refreshSkillsAndReviews = async () => {
+    const [skillsRes, reviewRes] = await Promise.allSettled([
+      fetchWithTimeout("/api/dashboard/skills").then((r) => r.json()),
+      fetchWithTimeout("/api/reviews/due").then((r) => r.json()),
+    ]);
+    if (skillsRes.status === "fulfilled") setSkills(skillsRes.value);
+    if (reviewRes.status === "fulfilled") setReviewsDue(reviewRes.value);
+  };
+
+  const mergeSimilarConcepts = async () => {
+    setMergingConcepts(true);
+    try {
+      const res = await fetchWithTimeout("/api/concepts/deduplicate", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.merged_count > 0) {
+          addToast(`Merged ${data.merged_count} similar topic${data.merged_count > 1 ? "s" : ""}`, "success");
+          await refreshSkillsAndReviews();
+        } else {
+          addToast("No similar topics found to merge", "success", 2000);
+        }
+      } else {
+        addToast("Failed to merge topics", "error");
+      }
+    } catch {
+      addToast("Failed to merge topics. Check your connection.", "error");
+    } finally {
+      setMergingConcepts(false);
+    }
+  };
 
   const deleteQuizEntry = async (entryId) => {
+    setDeletingEntries((prev) => new Set([...prev, entryId]));
     try {
       const res = await fetchWithTimeout(`/api/quiz-history/${entryId}`, { method: "DELETE" });
       if (res.ok) {
@@ -28,10 +61,13 @@ export default function Dashboard() {
       }
     } catch {
       addToast("Failed to delete entry. Check your connection.", "error");
+    } finally {
+      setDeletingEntries((prev) => { const n = new Set(prev); n.delete(entryId); return n; });
     }
   };
 
   const deleteConcept = async (conceptId) => {
+    setDeletingConcepts((prev) => new Set([...prev, conceptId]));
     try {
       const res = await fetchWithTimeout(`/api/concepts/${conceptId}`, { method: "DELETE" });
       if (res.ok) {
@@ -42,6 +78,26 @@ export default function Dashboard() {
       }
     } catch {
       addToast("Failed to delete concept. Check your connection.", "error");
+    } finally {
+      setDeletingConcepts((prev) => { const n = new Set(prev); n.delete(conceptId); return n; });
+    }
+  };
+
+  const resetQuizHistory = async () => {
+    setResettingHistory(true);
+    try {
+      await Promise.all([
+        fetchWithTimeout("/api/quiz-history?quiz_type=algorithm", { method: "DELETE" }),
+        fetchWithTimeout("/api/quiz-history?quiz_type=constraint", { method: "DELETE" }),
+      ]);
+      setQuizHistory((prev) =>
+        prev.filter((e) => e.quiz_type !== "algorithm" && e.quiz_type !== "constraint")
+      );
+      addToast("Quiz history cleared", "success", 2000);
+    } catch {
+      addToast("Failed to clear history", "error");
+    } finally {
+      setResettingHistory(false);
     }
   };
 
@@ -51,16 +107,12 @@ export default function Dashboard() {
       fetchWithTimeout("/api/dashboard/stats").then((r) => r.json()),
       fetchWithTimeout("/api/quiz-history?limit=500").then((r) => r.json()),
       fetchWithTimeout("/api/reviews/due").then((r) => r.json()),
-      fetchWithTimeout("/api/goals/today").then((r) => r.json()),
-      fetchWithTimeout("/api/recommendations?limit=3").then((r) => r.json()),
     ])
-      .then(([skillsRes, statsRes, quizRes, reviewRes, goalRes, recsRes]) => {
+      .then(([skillsRes, statsRes, quizRes, reviewRes]) => {
         if (skillsRes.status === "fulfilled") setSkills(skillsRes.value);
         if (statsRes.status === "fulfilled") setStats(statsRes.value);
         if (quizRes.status === "fulfilled") setQuizHistory(quizRes.value);
         if (reviewRes.status === "fulfilled") setReviewsDue(reviewRes.value);
-        if (goalRes.status === "fulfilled") setTodayGoal(goalRes.value);
-        if (recsRes.status === "fulfilled") setRecommendations(recsRes.value.recommendations || []);
 
         const failures = [skillsRes, statsRes, quizRes, reviewRes].filter(
           (r) => r.status === "rejected"
@@ -72,11 +124,8 @@ export default function Dashboard() {
       });
   }, []);
 
-  if (loading) {
-    return <DashboardSkeleton />;
-  }
-
   // Derive section-specific data (memoized to avoid recalc on every render)
+  // These must be above the early return to satisfy Rules of Hooks
   const algoQuizzes = useMemo(
     () => quizHistory.filter((q) => q.quiz_type === "algorithm" || q.quiz_type === "constraint"),
     [quizHistory]
@@ -102,17 +151,42 @@ export default function Dashboard() {
     return [...new Set(allGaps)].slice(0, 3);
   }, [skills]);
 
-  // Topic breakdown for algo quizzes
-  const algoTopicBreakdown = useMemo(() => {
-    const topics = {};
-    algoQuizzes.forEach((q) => {
-      const t = q.topic || "all";
-      topics[t] = (topics[t] || 0) + 1;
-    });
-    return Object.entries(topics)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4);
+  // Per-algorithm mastery derived from stored question/answer data
+  const algoMastery = useMemo(() => {
+    const counts = {};
+    for (const entry of algoQuizzes) {
+      if (entry.quiz_type !== "algorithm") continue;
+      const qs = entry.questions || [];
+      const ans = entry.answers || {};
+      for (let i = 0; i < qs.length; i++) {
+        const q = qs[i];
+        const userAns = ans[String(i)] ?? ans[i] ?? "";
+        const correct = (q.correct || "").toUpperCase();
+        const correctOpt = (q.options || []).find(
+          (o) => o && o[0].toUpperCase() === correct
+        );
+        if (!correctOpt) continue;
+        const algo = correctOpt.slice(3).split(" — ")[0].trim();
+        if (!counts[algo]) counts[algo] = { correct: 0, total: 0 };
+        counts[algo].total++;
+        if (String(userAns).toUpperCase().trim() === correct.trim()) {
+          counts[algo].correct++;
+        }
+      }
+    }
+    return Object.entries(counts)
+      .map(([algo, { correct, total }]) => ({
+        algo,
+        correct,
+        total,
+        pct: Math.round((correct / total) * 100),
+      }))
+      .sort((a, b) => a.pct - b.pct);
   }, [algoQuizzes]);
+
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
@@ -135,7 +209,7 @@ export default function Dashboard() {
             label="Math Drills"
             value={mlMathQuizzes.length}
             icon={"\u{1F4D0}"}
-            color="text-violet-400"
+            color="text-focus-text-muted"
           />
           <OverviewStat
             label="Reviews Due"
@@ -166,7 +240,10 @@ export default function Dashboard() {
                   {skills.filter((s) => s.score >= 80).length} mastered
                 </span>
               </div>
-              {skills.slice(0, 5).map((skill) => (
+              {skills.slice(0, 5).map((skill) => {
+                const review = reviewsDue.find((r) => r.concept_id === skill.concept_id);
+                const reviewLabel = getReviewLabel(review);
+                return (
                 <div key={skill.concept_id} className="group flex items-center gap-2">
                   <button
                     onClick={() => setSelectedConcept(skill)}
@@ -174,11 +251,18 @@ export default function Dashboard() {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm text-focus-text group-hover:text-focus-teal transition-colors truncate mr-2">
-                        {skill.concept_name}
+                        {cleanTopicName(skill.concept_name)}
                       </span>
-                      <span className="text-xs font-mono font-bold text-focus-text-muted">
-                        {Math.round(skill.score)}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {reviewLabel && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reviewLabel.className}`}>
+                            {reviewLabel.text}
+                          </span>
+                        )}
+                        <span className="text-xs font-mono font-bold text-focus-text-muted">
+                          {Math.round(skill.score)}
+                        </span>
+                      </div>
                     </div>
                     <div className="w-full bg-focus-border rounded-full h-1.5">
                       <div
@@ -200,15 +284,24 @@ export default function Dashboard() {
                         deleteConcept(skill.concept_id);
                       }
                     }}
-                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all p-1 shrink-0"
+                    disabled={deletingConcepts.has(skill.concept_id)}
+                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all p-1 shrink-0 disabled:opacity-50"
                     title="Delete concept"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-                    </svg>
+                    {deletingConcepts.has(skill.concept_id) ? (
+                      <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                      </svg>
+                    )}
                   </button>
                 </div>
-              ))}
+                );
+              })}
               {skills.length > 5 && (
                 <p className="text-xs text-focus-text-dim text-center">
                   +{skills.length - 5} more concepts
@@ -232,6 +325,34 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+              {/* Merge similar topics */}
+              {skills.length > 1 && (
+                <div className="pt-2 border-t border-focus-border flex justify-end">
+                  <button
+                    onClick={mergeSimilarConcepts}
+                    disabled={mergingConcepts}
+                    className="flex items-center gap-1.5 text-xs text-focus-text-dim hover:text-focus-teal transition-colors disabled:opacity-50"
+                    title="Merge semantically similar topics into one"
+                  >
+                    {mergingConcepts ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Merging&hellip;
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/><path d="M16 6h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3"/><line x1="12" y1="3" x2="12" y2="21"/><polyline points="9 6 12 3 15 6"/><polyline points="9 18 12 21 15 18"/>
+                        </svg>
+                        Merge similar topics
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </SectionCard>
@@ -250,177 +371,64 @@ export default function Dashboard() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs text-focus-text-muted">
                 <span>{algoQuizzes.length} quizzes completed</span>
-                {algoAvg !== null && <span>Avg: {algoAvg}%</span>}
-              </div>
-              {/* Mini score bars for last 5 */}
-              <div className="flex items-end gap-1 h-16">
-                {algoQuizzes.slice(0, 8).reverse().map((q, i) => {
-                  const score = q.score || 0;
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 flex flex-col items-center gap-0.5"
-                    >
-                      <div
-                        className={`w-full rounded-t transition-all ${
-                          score >= 80
-                            ? "bg-focus-teal"
-                            : score >= 50
-                            ? "bg-focus-amber"
-                            : "bg-red-400"
-                        }`}
-                        style={{ height: `${Math.max(score * 0.6, 4)}px` }}
-                      />
-                      <span className="text-[9px] text-focus-text-dim">
-                        {Math.round(score)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Topic breakdown */}
-              {algoTopicBreakdown.length > 0 && (
-                <div className="pt-2 border-t border-focus-border">
-                  <p className="text-xs text-focus-text-dim mb-1">
-                    Topics practiced
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {algoTopicBreakdown.map(([topic, count]) => (
-                      <span
-                        key={topic}
-                        className="text-xs px-2 py-0.5 bg-focus-amber-dim/30 text-focus-amber-light rounded"
-                      >
-                        {topic} ({count})
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </SectionCard>
-
-
-        {/* Study Next Section */}
-        <SectionCard
-          title="Study Next"
-          icon={"\u{1F9ED}"}
-          accentColor="violet-400"
-          linkTo="/"
-          linkLabel="Browse all"
-        >
-          {recommendations.length === 0 ? (
-            <EmptyState text="Study more concepts to get recommendations" />
-          ) : (
-            <div className="space-y-3">
-              {recommendations.map((rec) => (
-                <div key={rec.concept_id} className="group">
+                <div className="flex items-center gap-3">
+                  {algoAvg !== null && <span>Avg: {algoAvg}%</span>}
                   <button
-                    className="w-full text-left"
-                    onClick={() => navigate(`/?topic=${encodeURIComponent(rec.concept_name)}`)}
+                    onClick={() => {
+                      if (confirm("Reset all algorithm quiz history? This cannot be undone.")) {
+                        resetQuizHistory();
+                      }
+                    }}
+                    disabled={resettingHistory}
+                    className="flex items-center gap-1 text-focus-text-dim hover:text-red-400 transition-colors disabled:opacity-50"
+                    title="Reset quiz history"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm text-focus-text group-hover:text-violet-400 transition-colors truncate">
-                        {rec.concept_name}
-                      </span>
-                      <span className="text-xs font-mono text-focus-text-muted shrink-0">
-                        {Math.round(rec.score)}/100
-                      </span>
-                    </div>
-                    <p className="text-xs text-focus-text-dim mt-0.5">{rec.reason}</p>
+                    {resettingHistory ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Resetting…</span>
+                      </>
+                    ) : "Reset"}
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
-
-        {/* Review Section */}
-        <SectionCard
-          title="Spaced Review"
-          icon={"\u{1F504}"}
-          accentColor="focus-teal"
-          linkTo="/review"
-          linkLabel="Review now"
-        >
-          {reviewsDue.length === 0 && skills.length === 0 ? (
-            <EmptyState text="Study some concepts first" />
-          ) : reviewsDue.length === 0 ? (
-            <div className="text-center py-4">
-              <div className="text-3xl mb-2">{"\u{2705}"}</div>
-              <p className="text-sm text-focus-teal">All caught up!</p>
-              <p className="text-xs text-focus-text-dim mt-1">
-                No reviews due right now
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold text-focus-amber">
-                  {reviewsDue.length}
-                </span>
-                <span className="text-xs text-focus-text-muted">due today</span>
               </div>
-              {reviewsDue.slice(0, 4).map((r) => (
-                <div
-                  key={r.concept_id}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="text-focus-text truncate mr-2">
-                    {r.concept_name}
-                  </span>
-                  <span className="text-xs text-focus-text-dim whitespace-nowrap">
-                    Rep #{r.repetitions} &middot;{" "}
-                    {Math.round(r.interval_days)}d interval
-                  </span>
+              {/* Per-algorithm mastery bars */}
+              {algoMastery.length > 0 ? (
+                <div className="space-y-1.5">
+                  {algoMastery.slice(0, 6).map(({ algo, correct, total, pct }) => (
+                    <div key={algo}>
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <span className="text-focus-text-muted truncate max-w-[140px]" title={algo}>{algo}</span>
+                        <span className={`font-mono tabular-nums shrink-0 ml-1 ${pct >= 70 ? "text-focus-teal" : pct >= 40 ? "text-focus-amber" : "text-red-400"}`}>
+                          {correct}/{total}
+                        </span>
+                      </div>
+                      <div className="w-full bg-focus-border rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${pct >= 70 ? "bg-focus-teal" : pct >= 40 ? "bg-focus-amber" : "bg-red-400"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {algoMastery.length > 6 && (
+                    <p className="text-xs text-focus-text-dim text-center">
+                      +{algoMastery.length - 6} more algorithms
+                    </p>
+                  )}
                 </div>
-              ))}
-              {reviewsDue.length > 4 && (
-                <p className="text-xs text-focus-text-dim text-center">
-                  +{reviewsDue.length - 4} more due
-                </p>
+              ) : (
+                <p className="text-xs text-focus-text-dim">Complete algorithm quizzes to see per-skill breakdown</p>
               )}
             </div>
           )}
         </SectionCard>
-      </div>
 
-      {/* Today Widget */}
-      {todayGoal && (
-        <div className="bg-focus-surface border border-focus-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-focus-text flex items-center gap-2">
-              <span>&#128293;</span> Today
-            </h3>
-            {todayGoal.streak_days > 0 && (
-              <span className="text-xs font-bold text-focus-amber">
-                {todayGoal.streak_days} day streak
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-6">
-            <div>
-              <div className="text-2xl font-bold text-focus-teal">
-                {Math.floor(todayGoal.actual_minutes)}
-                <span className="text-sm font-normal text-focus-text-muted ml-1">min</span>
-              </div>
-              <div className="text-xs text-focus-text-dim">studied today</div>
-            </div>
-            <div className="flex-1">
-              <div className="flex justify-between text-xs text-focus-text-muted mb-1">
-                <span>Daily goal</span>
-                <span>{Math.round(todayGoal.actual_minutes)}/{todayGoal.target_minutes} min</span>
-              </div>
-              <div className="w-full bg-focus-border rounded-full h-2">
-                <div
-                  className="h-2 rounded-full bg-focus-teal transition-all"
-                  style={{ width: `${Math.min((todayGoal.actual_minutes / todayGoal.target_minutes) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
+      </div>
 
       {/* Recent Activity Feed */}
       <div className="bg-focus-surface border border-focus-border rounded-xl p-5">
@@ -432,7 +440,7 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-2">
             {recentActivity.map((entry) => (
-              <ActivityRow key={entry.id} entry={entry} onDelete={deleteQuizEntry} />
+              <ActivityRow key={entry.id} entry={entry} onDelete={deleteQuizEntry} isDeleting={deletingEntries.has(entry.id)} />
             ))}
           </div>
         )}
@@ -509,7 +517,7 @@ function MiniGauge({ label, value, color, bgColor }) {
 }
 
 
-function ActivityRow({ entry, onDelete }) {
+function ActivityRow({ entry, onDelete, isDeleting }) {
   const type = ACTIVITY_TYPE[entry.quiz_type] || {
     label: entry.quiz_type,
     color: "bg-focus-border text-focus-text-dim",
@@ -549,12 +557,20 @@ function ActivityRow({ entry, onDelete }) {
         {onDelete && (
           <button
             onClick={() => onDelete(entry.id)}
-            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all p-0.5"
+            disabled={isDeleting}
+            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all p-0.5 disabled:opacity-50"
             title="Delete entry"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            {isDeleting ? (
+              <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            )}
           </button>
         )}
       </div>
@@ -583,7 +599,7 @@ function DashboardSkeleton() {
       </div>
       {/* Section cards skeleton */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {[...Array(4)].map((_, i) => (
+        {[...Array(2)].map((_, i) => (
           <div key={i} className="bg-focus-surface border border-focus-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <SkeletonBlock className="w-32 h-4" />
@@ -617,3 +633,27 @@ function DashboardSkeleton() {
 
 /* ─── Data Helpers ──────────────────────────────────── */
 // deriveMlMathStats is now imported from ../utils/statsHelpers
+
+function getReviewLabel(review) {
+  if (!review) return null;
+  if (review.status === "due" || review.status === "new") {
+    return { text: "Due now", className: "bg-focus-amber/20 text-focus-amber" };
+  }
+  if (review.next_review) {
+    const days = Math.ceil(
+      (new Date(review.next_review) - new Date()) / (1000 * 60 * 60 * 24)
+    );
+    if (days <= 1) return { text: "Due today", className: "bg-focus-amber/20 text-focus-amber" };
+    return { text: `In ${days}d`, className: "bg-focus-border/80 text-focus-text-dim" };
+  }
+  return null;
+}
+
+function cleanTopicName(name) {
+  if (!name) return name;
+  return name
+    .replace(/^(explain\s+(to\s+me\s+)?|tell\s+me\s+(about\s+)?|what\s+(is|are)\s+|how\s+do(es)?\s+|describe\s+|walk\s+me\s+through\s+|give\s+me\s+(a\s+)?(brief\s+)?overview\s+of\s+)/i, "")
+    .replace(/\s+(work|works)(\?)?$/i, "")
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
+}

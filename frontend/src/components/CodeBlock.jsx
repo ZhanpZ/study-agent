@@ -51,7 +51,7 @@ export default function CodeBlock({ children, className, node, ...rest }) {
 
   if (isInline) {
     return (
-      <code className="text-indigo-300 bg-gray-800 px-1.5 py-0.5 rounded text-[0.8125rem]" {...rest}>
+      <code className="text-focus-teal bg-gray-800 px-1.5 py-0.5 rounded text-[0.8125rem]" {...rest}>
         {children}
       </code>
     );

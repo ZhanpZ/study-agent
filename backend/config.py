@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from crewai import LLM
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./study.db")
@@ -21,8 +21,9 @@ LLM_COMPREHENSION = LLM(model="gpt-4o-mini", temperature=0.4)  # comprehension M
 
 # ─── Tuning Thresholds ───────────────────────────────────────────
 CONCEPT_SIMILARITY_THRESHOLD = 0.7  # fuzzy match threshold for deduplication
+SEMANTIC_SIMILARITY_THRESHOLD = 0.82  # cosine similarity threshold for embedding-based deduplication
 MAX_TEACH_ROUNDS = 5                # max teach rounds before forcing evaluation
-MIN_TEACH_BEFORE_EVAL = 3           # minimum teach rounds before first evaluation
+MIN_TEACH_BEFORE_EVAL = 1           # minimum teach rounds before first evaluation
 EVAL_EVERY_N_ROUNDS = 2             # evaluate every N rounds after MIN_TEACH_BEFORE_EVAL
 SM2_DEFAULT_EASINESS = 2.5          # SM-2 initial easiness factor
 MASTERY_SCORE_THRESHOLD = 80        # score needed to mark concept as mastered

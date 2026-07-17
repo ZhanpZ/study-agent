@@ -9,12 +9,12 @@ import CodeBlock from "../components/CodeBlock";
 import CodeEditor from "../components/CodeEditor";
 
 const DIFFICULTY_STYLES = {
-  easy: "bg-green-500/15 text-green-400 border-green-500/25",
-  medium: "bg-amber-500/15 text-amber-400 border-amber-500/25",
+  easy: "bg-focus-teal/10 text-focus-teal border-focus-teal/25",
+  medium: "bg-focus-amber/10 text-focus-amber border-focus-amber/25",
   hard: "bg-red-500/15 text-red-400 border-red-500/25",
 };
 
-export default function DSATemplateDrill() {
+export default function DSATemplateDrill({ hideHeader = false }) {
   const [templates, setTemplates] = useState(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = usePersistedState("dsaDrill_template", null);
@@ -99,12 +99,19 @@ export default function DSATemplateDrill() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-white">DSA Template Drill</h2>
-          <p className="text-sm text-focus-text-muted mt-1">
+        {!hideHeader && (
+          <div>
+            <h2 className="text-2xl font-bold text-white">DSA Template Drill</h2>
+            <p className="text-sm text-focus-text-muted mt-1">
+              Practice implementing classic data structures & algorithms from memory
+            </p>
+          </div>
+        )}
+        {hideHeader && (
+          <p className="text-sm text-focus-text-muted">
             Practice implementing classic data structures & algorithms from memory
           </p>
-        </div>
+        )}
         {phase !== "select" && (
           <button
             onClick={handlePickAnother}
@@ -270,8 +277,8 @@ function CodePhase({ template, codeInput, setCodeInput, onSubmit, evaluating }) 
           <div className="space-y-1">
             {template.required_methods.map((method, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
-                <span className="text-emerald-400 font-mono">&bull;</span>
-                <code className="text-emerald-300 bg-gray-800/60 px-2 py-0.5 rounded font-mono">
+                <span className="text-focus-teal font-mono">&bull;</span>
+                <code className="text-focus-teal bg-gray-800/60 px-2 py-0.5 rounded font-mono">
                   {method}
                 </code>
               </div>
@@ -298,9 +305,9 @@ function CodePhase({ template, codeInput, setCodeInput, onSubmit, evaluating }) 
         <div className="flex items-center justify-between px-4 py-2 bg-gray-900/80 border-b border-gray-800">
           <div className="flex items-center gap-3">
             <div className="flex gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500/60"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500/60"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-focus-border"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-focus-border"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-focus-border"></span>
             </div>
             <span className="text-[11px] text-gray-400 font-mono">solution.py</span>
           </div>
@@ -330,8 +337,8 @@ function CodePhase({ template, codeInput, setCodeInput, onSubmit, evaluating }) 
           <button
             onClick={onSubmit}
             disabled={!codeInput.trim() || evaluating}
-            className="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg
-                       hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed
+            className="px-6 py-2 bg-focus-teal text-white text-sm font-medium rounded-lg
+                       hover:bg-focus-teal-light disabled:opacity-40 disabled:cursor-not-allowed
                        transition-colors flex items-center gap-2"
           >
             {evaluating ? (
@@ -359,23 +366,23 @@ function ResultPhase({ evaluation, onTryAgain, onPickAnother }) {
   const [showRef, setShowRef] = useState(false);
 
   const scoreColor = evaluation.overall_score >= 80
-    ? "text-green-400"
+    ? "text-focus-teal"
     : evaluation.overall_score >= 50
-    ? "text-amber-400"
+    ? "text-focus-amber"
     : "text-red-400";
 
   const scoreBg = evaluation.overall_score >= 80
-    ? "bg-green-500/10 border-green-500/20"
+    ? "bg-focus-teal/10 border-focus-teal/20"
     : evaluation.overall_score >= 50
-    ? "bg-amber-500/10 border-amber-500/20"
+    ? "bg-focus-amber/10 border-focus-amber/20"
     : "bg-red-500/10 border-red-500/20";
 
   const axes = [
-    { label: "Structural", key: "structural_correctness", color: "bg-blue-500" },
-    { label: "Algorithmic", key: "algorithmic_correctness", color: "bg-emerald-500" },
-    { label: "Complexity", key: "complexity_correctness", color: "bg-violet-500" },
-    { label: "Edge Cases", key: "edge_case_handling", color: "bg-amber-500" },
-    { label: "Code Quality", key: "code_quality", color: "bg-pink-500" },
+    { label: "Structural", key: "structural_correctness", color: "bg-focus-teal" },
+    { label: "Algorithmic", key: "algorithmic_correctness", color: "bg-focus-teal" },
+    { label: "Complexity", key: "complexity_correctness", color: "bg-focus-teal" },
+    { label: "Edge Cases", key: "edge_case_handling", color: "bg-focus-amber" },
+    { label: "Code Quality", key: "code_quality", color: "bg-focus-teal" },
   ];
 
   return (
@@ -460,7 +467,7 @@ function ResultPhase({ evaluation, onTryAgain, onPickAnother }) {
         <div className="rounded-xl border border-focus-border bg-focus-surface p-5">
           <h3 className="text-sm font-semibold text-white mb-3">Detailed Feedback</h3>
           <div className="text-sm text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none
-                          prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+                          prose-code:text-focus-teal prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
                           prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
               {evaluation.feedback}
@@ -488,7 +495,7 @@ function ResultPhase({ evaluation, onTryAgain, onPickAnother }) {
           {showRef && (
             <div className="px-5 pb-4 border-t border-focus-border pt-3">
               <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto border border-gray-800">
-                <code className="text-sm text-emerald-300 font-mono leading-relaxed whitespace-pre">
+                <code className="text-sm text-focus-teal font-mono leading-relaxed whitespace-pre">
                   {evaluation.reference_implementation}
                 </code>
               </pre>

@@ -4,7 +4,8 @@ import math
 import logging
 from crewai import Agent, Task, LLM
 from backend.config import LLM_QUIZ, LLM_MATH, LLM_VERIFY
-from backend.utils import extract_json
+from backend.utils import extract_json, parse_and_validate
+from backend.services.llm_guard import call_agent_task, LLMCallFailedError
 
 logger = logging.getLogger(__name__)
 
@@ -640,13 +641,16 @@ def generate_algorithm_quiz(
         expected_output=f"Valid JSON with {num_questions} algorithm selection quiz questions.",
         agent=agent,
     )
-    result = str(agent.execute_task(task))
-
-    data = extract_json(result)
-    if not data or not isinstance(data, dict):
-        logger.warning("Failed to parse algorithm quiz JSON | raw: %s", result[:200])
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("generate_algorithm_quiz LLM call failed: %s", e)
         return []
-    questions = data.get("questions", [])
+
+    validated = parse_and_validate(result, AlgorithmQuizResponse)
+    if validated is None:
+        return []
+    questions = [q.model_dump() for q in validated.questions]
 
     # Self-verification pass (Idea 3)
     questions = _verify_algorithm_questions(questions)
@@ -748,13 +752,16 @@ def generate_constraint_quiz(
         expected_output=f"Valid JSON with {num_questions} constraint-to-algorithm questions.",
         agent=agent,
     )
-    result = str(agent.execute_task(task))
-
-    data = extract_json(result)
-    if not data or not isinstance(data, dict):
-        logger.warning("Failed to parse constraint quiz JSON | raw: %s", result[:200])
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("generate_constraint_quiz LLM call failed: %s", e)
         return []
-    questions = data.get("questions", [])
+
+    validated = parse_and_validate(result, ConstraintQuizResponse)
+    if validated is None:
+        return []
+    questions = [q.model_dump() for q in validated.questions]
 
     # Deterministic constraint validation (Idea 6)
     questions = _validate_constraint_answers(questions)
@@ -842,12 +849,16 @@ def generate_ml_math_question(agent: Agent, topic: str = "all") -> dict:
         expected_output="Valid JSON with concept_explanation, math_question, proof_question, and ml_application.",
         agent=agent,
     )
-    result = str(agent.execute_task(task))
-
-    question = extract_json(result)
-    if not question or not isinstance(question, dict):
-        logger.warning("Failed to parse ML math question JSON | raw: %s", result[:200])
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("generate_ml_math_question LLM call failed: %s", e)
         return {}
+
+    validated = parse_and_validate(result, MLMathResponse)
+    if validated is None:
+        return {}
+    question = validated.model_dump()
 
     # Self-verification pass (Idea 3)
     question = _verify_ml_math(question)

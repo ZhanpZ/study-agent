@@ -59,14 +59,46 @@ class TesterEvaluation(BaseModel):
     feedback: str
 
 
+class MCQQuestion(BaseModel):
+    question: str
+    options: list[str] = Field(min_length=4, max_length=4)
+    correct: str
+
+
+class MCQResponse(BaseModel):
+    questions: list[MCQQuestion]
+
+
+class CodeChallengeResponse(BaseModel):
+    problem: str
+    hints: list[str] = Field(default_factory=list)
+
+
+class NoteCleanResult(BaseModel):
+    topic: str
+    cleaned_note: str
+
+
 class WSMessage(BaseModel):
     type: str  # "message", "phase_change", "score_update", "start_session"
-    content: str | None = None
+    content: str | None = Field(default=None, max_length=10000)
     agent: str | None = None
     phase: str | None = None
     score: float | None = None
     gaps: list[str] | None = None
     topic: str | None = None
+    answers: list[str] | None = None
+    code: str | None = Field(default=None, max_length=10000)
+    language: str | None = None
+
+    @field_validator("answers")
+    @classmethod
+    def validate_answers(cls, v):
+        if v is not None:
+            for a in v:
+                if len(a) > 2000:
+                    raise ValueError("individual answer exceeds max length")
+        return v
 
 
 class StatsResponse(BaseModel):
@@ -94,6 +126,18 @@ class QuizHistorySave(BaseModel):
         allowed = {"algorithm", "constraint", "ml_math", "dsa_template"}
         if v not in allowed:
             raise ValueError(f"quiz_type must be one of {allowed}")
+        return v
+
+
+class DsaTemplateEvaluateRequest(BaseModel):
+    template_id: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=1, max_length=10000)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v):
+        if not v.strip():
+            raise ValueError("code must not be empty")
         return v
 
 

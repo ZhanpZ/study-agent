@@ -5,12 +5,20 @@ import { useToast } from "./Toast";
 import { MODE_CONFIG } from "../constants/modeConfig";
 import fetchWithTimeout from "../utils/fetchWithTimeout";
 
+function stripMarkdownFence(content) {
+  if (!content) return content;
+  return content.replace(/^```(?:markdown|md)?\r?\n([\s\S]*?)\r?\n```\s*$/m, "$1").trim();
+}
+
 export default function ConceptDetail({ conceptId, conceptName, score, onClose }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedSession, setExpandedSession] = useState(null);
   const [summaryContent, setSummaryContent] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [sessionMessages, setSessionMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [activeTab, setActiveTab] = useState("summary");
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -26,7 +34,6 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
       });
   }, [conceptId]);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handler);
@@ -37,10 +44,15 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
     if (expandedSession === session.id) {
       setExpandedSession(null);
       setSummaryContent(null);
+      setSessionMessages([]);
       return;
     }
 
     setExpandedSession(session.id);
+    setActiveTab(session.has_summary ? "summary" : "conversation");
+    setSummaryContent(null);
+    setSessionMessages([]);
+
     if (session.has_summary) {
       setLoadingSummary(true);
       fetchWithTimeout(`/api/session/${session.id}/summary`)
@@ -53,15 +65,30 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
           setSummaryContent(null);
           setLoadingSummary(false);
         });
-    } else {
-      setSummaryContent(null);
     }
+
+    setLoadingMessages(true);
+    fetchWithTimeout(`/api/session/${session.id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setSessionMessages(data.messages || []);
+        setLoadingMessages(false);
+      })
+      .catch(() => {
+        setSessionMessages([]);
+        setLoadingMessages(false);
+      });
+  };
+
+  const agentLabel = (agent) => {
+    const map = { professor: "Professor", student: "Student", tester: "Tester" };
+    return map[agent] || null;
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-focus-bg-alt border border-focus-border rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col mx-4 shadow-2xl"
+        className="bg-focus-bg-alt border border-focus-border rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col mx-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -78,7 +105,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="w-16 h-1.5 bg-focus-border rounded-full">
                     <div
-                      className={`h-1.5 rounded-full ${score >= 80 ? "bg-green-500" : score >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                      className={`h-1.5 rounded-full ${score >= 80 ? "bg-focus-teal" : score >= 50 ? "bg-focus-amber" : "bg-red-500"}`}
                       style={{ width: `${score}%` }}
                     />
                   </div>
@@ -115,7 +142,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                   onClick={() => handleSessionClick(session)}
                   className={`w-full text-left bg-focus-surface border rounded-xl p-4 transition-all hover:bg-focus-surface-alt ${
                     expandedSession === session.id
-                      ? "border-indigo-500/50 ring-1 ring-indigo-500/10"
+                      ? "border-focus-teal/50 ring-1 ring-focus-teal/10"
                       : "border-focus-border hover:border-focus-border-light"
                   }`}
                 >
@@ -128,7 +155,7 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                       </span>
                       <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium border ${
                         session.phase === "complete"
-                          ? "bg-purple-500/15 text-purple-400 border-purple-500/25"
+                          ? "bg-focus-teal/10 text-focus-teal border-focus-teal/25"
                           : "bg-focus-surface text-focus-text-dim border-focus-border"
                       }`}>
                         {session.phase}
@@ -145,35 +172,105 @@ export default function ConceptDetail({ conceptId, conceptName, score, onClose }
                       </svg>
                     </div>
                   </div>
-                  {!session.has_summary && (
-                    <p className="text-xs text-focus-text-dim mt-1.5">No summary available</p>
-                  )}
                 </button>
 
-                {/* Expanded summary */}
-                {expandedSession === session.id && session.has_summary && (
-                  <div className="mt-2 bg-focus-surface border border-focus-border rounded-xl p-4">
-                    {loadingSummary ? (
-                      <div className="flex items-center gap-2 text-sm text-focus-text-muted py-2">
-                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                        </svg>
-                        Loading notes...
-                      </div>
-                    ) : summaryContent ? (
-                      <div className="text-sm text-gray-200 prose prose-invert prose-sm max-w-none
-                                      prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
-                                      prose-p:my-1 prose-li:my-0 prose-ul:my-1 prose-ol:my-1
-                                      prose-code:text-indigo-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:rounded
-                                      prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
-                                      prose-strong:text-gray-100">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {summaryContent}
-                        </ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-focus-text-dim">No notes found.</div>
-                    )}
+                {/* Expanded session detail */}
+                {expandedSession === session.id && (
+                  <div className="mt-2 bg-focus-surface border border-focus-border rounded-xl overflow-hidden">
+                    {/* Tabs */}
+                    <div className="flex border-b border-focus-border">
+                      {session.has_summary && (
+                        <button
+                          onClick={() => setActiveTab("summary")}
+                          className={`px-4 py-2.5 text-xs font-medium transition-colors ${
+                            activeTab === "summary"
+                              ? "text-focus-teal border-b-2 border-focus-teal bg-focus-teal/5"
+                              : "text-focus-text-muted hover:text-focus-text"
+                          }`}
+                        >
+                          Session Notes
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setActiveTab("conversation")}
+                        className={`px-4 py-2.5 text-xs font-medium transition-colors ${
+                          activeTab === "conversation"
+                            ? "text-focus-teal border-b-2 border-focus-teal bg-focus-teal/5"
+                            : "text-focus-text-muted hover:text-focus-text"
+                        }`}
+                      >
+                        Conversation
+                      </button>
+                    </div>
+
+                    <div className="p-4 max-h-96 overflow-y-auto">
+                      {/* Summary tab */}
+                      {activeTab === "summary" && (
+                        loadingSummary ? (
+                          <div className="flex items-center gap-2 text-sm text-focus-text-muted py-2">
+                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                            </svg>
+                            Loading notes...
+                          </div>
+                        ) : summaryContent ? (
+                          <div className="text-sm text-gray-200 prose prose-invert prose-sm max-w-none
+                                          prose-headings:text-gray-100 prose-headings:mb-2 prose-headings:mt-3
+                                          prose-p:my-1 prose-li:my-0 prose-ul:my-1 prose-ol:my-1
+                                          prose-code:text-focus-teal prose-code:bg-gray-800 prose-code:px-1.5 prose-code:rounded
+                                          prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg
+                                          prose-strong:text-gray-100">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {stripMarkdownFence(summaryContent)}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-focus-text-dim">No notes found.</div>
+                        )
+                      )}
+
+                      {/* Conversation tab */}
+                      {activeTab === "conversation" && (
+                        loadingMessages ? (
+                          <div className="flex items-center gap-2 text-sm text-focus-text-muted py-2">
+                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                            </svg>
+                            Loading conversation...
+                          </div>
+                        ) : sessionMessages.length === 0 ? (
+                          <div className="text-sm text-focus-text-dim">No messages recorded.</div>
+                        ) : (
+                          <div className="space-y-3">
+                            {sessionMessages.map((msg, i) => (
+                              <div
+                                key={i}
+                                className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}
+                              >
+                                {msg.role !== "user" && agentLabel(msg.agent) && (
+                                  <span className="text-[10px] text-focus-text-dim px-1">{agentLabel(msg.agent)}</span>
+                                )}
+                                <div
+                                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                                    msg.role === "user"
+                                      ? "bg-focus-teal/15 text-gray-100 border border-focus-teal/25"
+                                      : "bg-focus-bg-alt text-gray-200 border border-focus-border"
+                                  }`}
+                                >
+                                  <div className="prose prose-invert prose-sm max-w-none
+                                                  prose-p:my-0.5 prose-headings:my-1
+                                                  prose-code:text-focus-teal prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
+                                                  prose-pre:bg-gray-900 prose-pre:my-1 prose-pre:rounded-lg
+                                                  prose-ul:my-0.5 prose-ol:my-0.5 prose-li:my-0">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

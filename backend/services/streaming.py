@@ -6,6 +6,8 @@ import logging
 from openai import AsyncOpenAI
 from fastapi import WebSocket
 
+from backend.services.llm_guard import check_circuit, record_success, record_failure, LLMCircuitOpenError
+
 logger = logging.getLogger(__name__)
 
 _client: AsyncOpenAI | None = None
@@ -60,6 +62,8 @@ async def stream_to_ws(
     client = _get_client()
     full_text = []
 
+    check_circuit()  # raises LLMCircuitOpenError if OpenAI has been failing repeatedly
+
     try:
         stream = await client.chat.completions.create(
             model=model,
@@ -90,9 +94,11 @@ async def stream_to_ws(
             "type": "stream_end",
             "agent": agent_name,
         })
+        record_success()
 
     except Exception as e:
         logger.error("Streaming error for agent '%s': %s", agent_name, e)
+        record_failure()
         # Fall back to sending what we have so far as a complete message
         if full_text:
             await websocket.send_json({

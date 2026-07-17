@@ -1,6 +1,11 @@
+import logging
 from crewai import Agent, Task
 from backend.config import MODEL_STRONG
-from backend.utils import extract_json
+from backend.models.schemas import NoteCleanResult
+from backend.utils import parse_and_validate
+from backend.services.llm_guard import call_agent_task, LLMCallFailedError
+
+logger = logging.getLogger(__name__)
 
 
 def create_note_cleaner_agent() -> Agent:
@@ -49,9 +54,13 @@ def clean_note(agent: Agent, raw_text: str) -> dict:
         ),
         agent=agent,
     )
-    result = str(agent.execute_task(task))
+    try:
+        result = call_agent_task(agent, task)
+    except LLMCallFailedError as e:
+        logger.warning("clean_note LLM call failed: %s", e)
+        result = ""
 
-    data = extract_json(result)
-    if data and isinstance(data, dict):
-        return data
+    validated = parse_and_validate(result, NoteCleanResult)
+    if validated is not None:
+        return validated.model_dump()
     return {"topic": "Untitled Note", "cleaned_note": result}
